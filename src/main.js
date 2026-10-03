@@ -6,6 +6,7 @@ import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
 import { pickUi } from './ui/random.js';
 import { newState, normalizeState, setState, configureState } from './simulation/state.js';
 import { configureEconomy, pushHist, tick } from './simulation/economy.js';
+import { wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './simulation/explainability.js';
 import { createChallenges } from './simulation/challenges.js';
 import { BUILDS } from './simulation/buildings.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
@@ -674,6 +675,17 @@ function movePeople(dt){
 
 /* ---------------- 界面 ---------------- */
 const STATS=[{k:'pop',n:'居民人口',u:'人'},{k:'food',n:'粮食储备',u:'担'},{k:'wealth',n:'流通财富',u:'金'},{k:'happy',n:'居民幸福',u:'/100'},{k:'coh',n:'社会凝聚力',u:'/100'}];
+const WHY_LABELS={
+  wealth:'财富',food:'温饱',friends:'朋友',partner:'伴侣',health:'健康',tax:'税负',inequality:'贫富差距',
+  child:'孩童阶段',festival:'丰收节',drought:'干旱',winter:'冬季',optimist:'乐天性格',public:'公共投入',
+  market:'集市',teahouse:'茶馆',sad:'愁苦人口',policy:'分配制度'
+};
+const signed=v=>`${v>=0?'+':''}${v.toFixed(1)}`;
+function whyRows(factors,limit=6){
+  return factors.filter(f=>f.key!=='base'&&Math.abs(f.value)>=0.05)
+    .sort((a,b)=>Math.abs(b.value)-Math.abs(a.value)).slice(0,limit)
+    .map(f=>`<div class="why-row"><span>${WHY_LABELS[f.key]||f.key}</span><b class="${f.value>=0?'pos':'neg'}">${signed(f.value)}</b></div>`).join('');
+}
 function buildStats(){
   $('stats').innerHTML=STATS.map(s=>`<div class="card stat"><div class="top"><span>${s.n}</span><span id="st-${s.k}-r"></span></div><div class="mid"><div class="val"><span id="st-${s.k}-v"></span><small>${s.u}</small></div><svg viewBox="0 0 72 26" preserveAspectRatio="none" aria-hidden="true"><path id="st-${s.k}-p" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg></div><div class="foot" id="st-${s.k}-f"></div></div>`).join('');
   $('legend').innerHTML=Object.values(JOBS).map(j=>`<span><i style="background:${j.c}"></i>${j.n}</span>`).join('');
@@ -700,6 +712,16 @@ function updateStats(){
   set('wealth',fmt(wealth),`贫富差距 ${S.gini.toFixed(2)}`,`今日 ${S.trades} 笔交易，公库 ${fmt(S.treasury)} 金`);
   set('happy',String(Math.round(happyAvg)),`${content} 人满足`,`${sad} 人愁苦，${hungry} 人挨饿`);
   set('coh',String(Math.round(S.cohesion)),`${couples} 对伴侣`,`人均 ${avgF.toFixed(1)} 位朋友`);
+  const cohWhy=cohesionBreakdown({
+    state:S,
+    averageFriends:avgF,
+    sadFraction:sad/n,
+    gini:S.gini,
+    teahouseCount:BT('teahouse')
+  });
+  setT('cohWhyValue',String(Math.round(S.cohesion)));
+  setT('cohWhyTrend',`驱动目标 ${Math.round(cohWhy.target)} · 每日约 ${signed(cohWhy.expectedChange)}`);
+  setH('cohWhy',whyRows(cohWhy.factors));
 }
 function avatarSVG(p){
   const hair=p.age>=55*YEAR?'#cfcac0':p.hair,long=p.gender==='女'?4.2:2;
@@ -721,6 +743,28 @@ function updateFate(){
   $('bSkill').style.width=Math.round(p.skill)+'%';setT('vSkill',String(Math.round(p.skill)));
   $('bFed').style.width=Math.round(clamp(p.fed,0,1)*100)+'%';setT('vFed',Math.round(clamp(p.fed,0,1)*100)+'%');
   $('bFr').style.width=Math.min(100,fr/8*100)+'%';setT('vFr',String(fr));
+  const wealth=wealthStats(S.people);
+  const happyWhy=happinessBreakdown({
+    state:S,
+    person:p,
+    averageWealth:wealth.average,
+    gini:wealth.gini,
+    seasonIndex:seasonIdx(),
+    friendCount:fr,
+    marketCount:BC(p.village,'market'),
+    teahouseCount:BC(p.village,'teahouse')
+  });
+  setT('fHappyTrend',`驱动目标 ${Math.round(happyWhy.target)} · 每日约 ${signed(happyWhy.expectedChange)}`);
+  setH('fHappyWhy',whyRows(happyWhy.factors));
+  const moveWhy=migrationBreakdown(p);
+  let moveText='幸福低于 22 会累积深度愁苦日；超过 12 日后，每日有 6% 概率自动离开。';
+  if(!moveWhy.alive)moveText='这位居民已不在溪谷，不再计算离开风险。';
+  else if(!moveWhy.adult)moveText+=' 当前是孩童，不会因此自动离开。';
+  else if(moveWhy.automaticEligible)moveText+=` 当前已累计 ${moveWhy.sadDays} 日，自动离开风险已生效。`;
+  else if(moveWhy.sadDays)moveText+=` 当前累计 ${moveWhy.sadDays} 日，再持续 ${moveWhy.daysUntilAutomaticRisk} 日会进入风险期。`;
+  else moveText+=' 当前没有累计深度愁苦日。';
+  if(moveWhy.wanderEligible)moveText+=' 同时符合“出去闯闯”两难事件的候选条件。';
+  setT('fMoveWhy',moveText);$('fMoveWhy').classList.toggle('warn',moveWhy.automaticEligible);
   const items=[];
   const add=(id,label,cls)=>{const q=byId(id);if(!q)return;items.push(`<button class="rel${cls?' '+cls:''}${q.status!=='alive'?' gone':''}" data-id="${q.id}"><em>${label}</em>${q.name}</button>`);};
   if(p.partner)add(p.partner,'伴侣');
