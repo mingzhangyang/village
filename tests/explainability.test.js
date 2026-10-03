@@ -15,38 +15,54 @@ describe('explainability', () => {
     expect(people).toEqual(before);
   });
 
-  it('keeps happiness factors additive and exposes the existing partner and food effects', () => {
-    const state = { tax: 0.15, festival: 0, drought: 0, publicPerCap: 0 };
+  it('pins the complete happiness formula with representative non-zero factors', () => {
+    const state = { tax: 0.2, festival: 1, drought: 3, publicPerCap: 0.5 };
     const person = {
-      wealth: 20,
-      fed: 1,
-      health: 75,
+      wealth: 31,
+      fed: 0.8,
+      health: 65,
       partner: 9,
-      job: 'farmer',
-      traits: [],
+      job: 'child',
+      traits: ['乐天'],
       happiness: 50,
     };
-    const partnered = happinessBreakdown({
+    const beforeState = structuredClone(state);
+    const beforePerson = structuredClone(person);
+
+    const result = happinessBreakdown({
       state,
       person,
-      averageWealth: 20,
-      gini: 0,
-      seasonIndex: 0,
-      friendCount: 0,
+      averageWealth: 40,
+      gini: 0.25,
+      seasonIndex: 3,
+      friendCount: 3,
+      marketCount: 2,
+      teahouseCount: 1,
     });
-    const hungrySingle = happinessBreakdown({
-      state,
-      person: { ...person, partner: null, fed: 0.5 },
-      averageWealth: 20,
-      gini: 0,
-      seasonIndex: 0,
-      friendCount: 0,
-    });
+    const factorSum = result.factors.reduce((total, factor) => total + factor.value, 0);
 
-    expect(partnered.factors.find(factor => factor.key === 'partner').value).toBe(8);
-    expect(partnered.factors.find(factor => factor.key === 'food').value).toBe(12);
-    expect(hungrySingle.factors.find(factor => factor.key === 'food').value).toBe(-15);
-    expect(partnered.rawTarget - hungrySingle.rawTarget).toBe(35);
+    expect(result.rawTarget).toBeCloseTo(89.5, 10);
+    expect(factorSum).toBeCloseTo(result.rawTarget, 10);
+    expect(result.factors).toEqual([
+      { key: 'base', value: 30 },
+      { key: 'wealth', value: 21 },
+      { key: 'food', value: -6 },
+      { key: 'friends', value: 10.5 },
+      { key: 'partner', value: 8 },
+      { key: 'health', value: -2 },
+      { key: 'tax', value: -3 },
+      { key: 'inequality', value: -7 },
+      { key: 'child', value: 15 },
+      { key: 'festival', value: 14 },
+      { key: 'drought', value: -5 },
+      { key: 'winter', value: -3 },
+      { key: 'optimist', value: 7 },
+      { key: 'public', value: 4 },
+      { key: 'market', value: 4 },
+      { key: 'teahouse', value: 2 },
+    ]);
+    expect(state).toEqual(beforeState);
+    expect(person).toEqual(beforePerson);
   });
 
   it('explains drought and policy effects on cohesion using the production formula', () => {

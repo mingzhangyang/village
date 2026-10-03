@@ -759,7 +759,7 @@ function updateFate(){
     setT('fHappyTrend',`驱动目标 ${Math.round(happyWhy.target)} · 每日约 ${signed(happyWhy.expectedChange)}`);
     setH('fHappyWhy',whyRows(happyWhy.factors));
   }else{
-    setT('fHappyTrend','生命已结束，幸福不再变化');
+    setT('fHappyTrend',p.status==='dead'?'生命已结束，幸福不再变化':'已离开溪谷，幸福不再模拟');
     setH('fHappyWhy','<span class="empty">没有当前驱动因素。</span>');
   }
   const moveWhy=migrationBreakdown(p);
