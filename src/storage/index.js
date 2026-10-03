@@ -1,5 +1,5 @@
-(function(){
-'use strict';
+export function createHejingStorage(store) {
+  if (!store) throw new Error('A Storage-compatible object is required.');
 
 const SCHEMA_VERSION=2;
 const GAME_VERSION='0.2.0';
@@ -17,7 +17,7 @@ function fail(code,message){
 }
 function safeParse(raw){
   if(!raw)return null;
-  try{return JSON.parse(raw);}catch(err){return null;}
+  try{return JSON.parse(raw);}catch{return null;}
 }
 function cleanName(name,fallback){
   const value=String(name||'').trim().replace(/\s+/g,' ').slice(0,40);
@@ -51,18 +51,18 @@ function newIndex(){
   return {version:SCHEMA_VERSION,active:{kind:'slot',id:null},slots:[]};
 }
 function loadIndex(){
-  const parsed=safeParse(localStorage.getItem(INDEX_KEY));
+  const parsed=safeParse(store.getItem(INDEX_KEY));
   if(!parsed||parsed.version!==SCHEMA_VERSION||!Array.isArray(parsed.slots)||!parsed.active)return newIndex();
   return parsed;
 }
 function saveIndex(index){
-  localStorage.setItem(INDEX_KEY,JSON.stringify(index));
+  store.setItem(INDEX_KEY,JSON.stringify(index));
 }
 function slotKey(id){return SLOT_PREFIX+id;}
 function makeId(){
   for(let i=0;i<8;i++){
     const id=Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
-    if(!localStorage.getItem(slotKey(id)))return id;
+    if(!store.getItem(slotKey(id)))return id;
   }
   fail('ID_COLLISION','无法创建新的存档编号，请重试。');
 }
@@ -71,11 +71,11 @@ function validEnvelope(env,mode){
     (!mode||env.mode===mode)&&typeof env.name==='string';
 }
 function readSlotEnvelope(id){
-  const env=safeParse(localStorage.getItem(slotKey(id)));
+  const env=safeParse(store.getItem(slotKey(id)));
   return validEnvelope(env,'free')?env:null;
 }
 function readChallengeEnvelope(){
-  const env=safeParse(localStorage.getItem(CHALLENGE_KEY));
+  const env=safeParse(store.getItem(CHALLENGE_KEY));
   return validEnvelope(env,'challenge')?env:null;
 }
 function summary(env){
@@ -105,7 +105,7 @@ function createSlot(name,state,activate){
   const index=loadIndex();ensureCapacity(index);
   const now=new Date().toISOString(),id=makeId();
   const env={format:'hejing-save',version:SCHEMA_VERSION,gameVersion:GAME_VERSION,id,name:cleanName(name,`溪谷 ${index.slots.length+1}`),mode:'free',createdAt:now,updatedAt:now,state};
-  localStorage.setItem(slotKey(id),JSON.stringify(env));
+  store.setItem(slotKey(id),JSON.stringify(env));
   upsertSummary(index,env);
   if(activate!==false)index.active={kind:'slot',id};
   saveIndex(index);
@@ -116,7 +116,7 @@ function saveSlot(id,state){
   const old=readSlotEnvelope(id);
   if(!old)fail('SLOT_MISSING','这个存档不存在或已经损坏。');
   const env=Object.assign({},old,{updatedAt:new Date().toISOString(),state});
-  localStorage.setItem(slotKey(id),JSON.stringify(env));
+  store.setItem(slotKey(id),JSON.stringify(env));
   const index=loadIndex();upsertSummary(index,env);saveIndex(index);
   return env;
 }
@@ -132,14 +132,14 @@ function renameSlot(id,name){
   const env=readSlotEnvelope(id);
   if(!env)fail('SLOT_BROKEN','这个存档不存在或已损坏。');
   env.name=cleanName(name,env.name);env.updatedAt=new Date().toISOString();
-  localStorage.setItem(slotKey(id),JSON.stringify(env));
+  store.setItem(slotKey(id),JSON.stringify(env));
   const index=loadIndex();upsertSummary(index,env);saveIndex(index);
   return env;
 }
 function deleteSlot(id){
   const index=loadIndex();
   if(index.active&&index.active.kind==='slot'&&index.active.id===id)fail('ACTIVE_SLOT','不能删除当前正在游玩的存档，请先加载另一个世界。');
-  localStorage.removeItem(slotKey(id));
+  store.removeItem(slotKey(id));
   index.slots=index.slots.filter(s=>s.id!==id);
   saveIndex(index);
 }
@@ -191,12 +191,12 @@ function saveChallenge(state,name){
   if(!originSlotId&&index.active&&index.active.kind==='slot')originSlotId=index.active.id;
   if(!originSlotId&&index.active&&index.active.originSlotId)originSlotId=index.active.originSlotId;
   const env={format:'hejing-save',version:SCHEMA_VERSION,gameVersion:GAME_VERSION,id:'challenge',name:cleanName(name,old?old.name:'挑战'),mode:'challenge',createdAt:old?old.createdAt:now,updatedAt:now,originSlotId:originSlotId||null,state};
-  localStorage.setItem(CHALLENGE_KEY,JSON.stringify(env));
+  store.setItem(CHALLENGE_KEY,JSON.stringify(env));
   index.active={kind:'challenge',originSlotId:env.originSlotId};saveIndex(index);
   return env;
 }
 function startChallenge(state,name){
-  localStorage.removeItem(CHALLENGE_KEY);
+  store.removeItem(CHALLENGE_KEY);
   return saveChallenge(state,name);
 }
 function saveActive(state,meta){
@@ -208,7 +208,7 @@ function saveActive(state,meta){
 function returnToOrigin(){
   const index=loadIndex(),ch=readChallengeEnvelope();
   const origin=(ch&&ch.originSlotId)||(index.active&&index.active.originSlotId)||null;
-  localStorage.removeItem(CHALLENGE_KEY);
+  store.removeItem(CHALLENGE_KEY);
   if(origin){
     const env=readSlotEnvelope(origin);
     if(env){index.active={kind:'slot',id:origin};saveIndex(index);return session('slot',env);}
@@ -219,13 +219,13 @@ function discardChallenge(){
   return returnToOrigin();
 }
 function clearChallenge(){
-  localStorage.removeItem(CHALLENGE_KEY);
+  store.removeItem(CHALLENGE_KEY);
 }
 function promoteChallenge(state,name){
   if(!validState(state))fail('INVALID_STATE','挑战世界状态不完整，无法另存。');
   const free=JSON.parse(JSON.stringify(state));free.ch=null;free.paused=false;
   const env=createSlot(cleanName(name,'挑战后的溪谷'),free,true);
-  localStorage.removeItem(CHALLENGE_KEY);
+  store.removeItem(CHALLENGE_KEY);
   return session('slot',env);
 }
 function exportEnvelope(env){
@@ -263,13 +263,13 @@ function importText(text){
   return createSlot(name,source,false);
 }
 function migrateLegacy(){
-  const raw=localStorage.getItem(LEGACY_KEY);
+  const raw=store.getItem(LEGACY_KEY);
   if(!raw)return {migrated:false,error:null};
   const state=safeParse(raw);
   if(!validState(state))return {migrated:false,error:'旧版存档已损坏，已保留原始数据。'};
   try{
     const env=createSlot('旧版溪谷',state,true);
-    localStorage.removeItem(LEGACY_KEY);
+    store.removeItem(LEGACY_KEY);
     return {migrated:true,error:null,id:env.id};
   }catch(err){
     return {migrated:false,error:err.code==='SLOTS_FULL'?'自由存档槽已满，旧版存档尚未迁移。':'旧版存档迁移失败，原始数据仍然保留。'};
@@ -280,11 +280,11 @@ function bootstrap(){
   return {session:loadActive(),migrated:migration.migrated,migrationError:migration.error};
 }
 
-window.HejingStorage={
+return {
   SCHEMA_VERSION,GAME_VERSION,MAX_SLOTS,
   bootstrap,loadActive,saveActive,createSlot,saveSlot,loadSlot,renameSlot,deleteSlot,listSlots,getActiveInfo,
   startChallenge,returnToOrigin,discardChallenge,clearChallenge,promoteChallenge,
   exportSlot,exportActive,importText,
   validateState:validState
 };
-})();
+}

@@ -13,14 +13,34 @@
 
 进度会自动保存在浏览器里。Save System v2 支持最多 5 个自由世界存档、手动保存、导入/导出 JSON，以及旧版存档自动迁移。挑战使用独立存档，不会覆盖长期经营的自由世界。
 
-## 运行
+## 本地开发
 
-这是一个不需要构建步骤的静态应用：`index.html` 负责页面结构，`styles.css` 负责视觉样式，`app.js` 负责模拟与交互逻辑。不需要安装任何东西，直接用浏览器打开 `index.html` 即可，也可以用 GitHub Pages 发布成网页。
+需要 Node.js 和 npm。安装依赖后可启动 Vite 开发服务器：
 
-## 技术
+```sh
+npm install
+npm run dev
+```
 
-纯 HTML、CSS 和 JavaScript，地图用 Canvas 绘制，没有使用任何框架或构建工具。
+提交前运行轻量检查：
 
+```sh
+npm run lint
+npm test
+npm run build
+```
+
+`npm run build` 生成可部署到 GitHub Pages 的静态站点到 `dist/`。Vite 使用相对资源路径。
+
+## 工程结构
+
+- `src/main.js`：界面、DOM 事件和应用组装。
+- `src/simulation/`：状态、时间、人口关系、经济 tick 和挑战期限规则。
+- `src/world/map.js`：固定的世界布局。
+- `src/storage/index.js`：可注入 `Storage` 的 Save System v2 实现；浏览器 key 与 schema 保持兼容。
+- `index.html`、`styles.css`：页面结构和样式。
+
+本阶段只调整模块边界和测试基础设施，保留现有玩法、模拟参数、随机调用和存档契约。
 
 ## 存档
 
