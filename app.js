@@ -1261,9 +1261,11 @@ function closeSaveManager(){
 function loadFreeSlot(id,fromImport){
   const info=Storage.getActiveInfo();
   if(info.kind==='challenge'&&!window.confirm('加载自由世界会结束当前挑战。继续吗？'))return;
+  const env=Storage.loadSlot(id,false);
   saveNow();
-  if(info.kind==='challenge')Storage.discardChallenge();
-  const env=Storage.loadSlot(id,true);installState(env.state,false);closeSaveManager();toast(fromImport?'已导入并加载存档':'已加载存档');
+  Storage.loadSlot(id,true);
+  if(info.kind==='challenge')Storage.clearChallenge();
+  installState(env.state,false);closeSaveManager();toast(fromImport?'已导入并加载存档':'已加载存档');
 }
 $('saveBtn').addEventListener('click',openSaveManager);
 $('saveMdl').addEventListener('click',e=>{
@@ -1280,8 +1282,9 @@ $('saveMdl').addEventListener('click',e=>{
       const info=Storage.getActiveInfo();
       if(info.kind==='challenge'&&!window.confirm('新建自由世界会结束当前挑战，但挑战前的自由世界仍会保留。继续吗？'))return;
       const name=window.prompt('给新世界起个名字：',`溪谷 ${Storage.listSlots().length+1}`);if(name===null)return;
-      saveNow();if(info.kind==='challenge')Storage.discardChallenge();
-      installState(null,true);Storage.createSlot(name,S,true);saveNow();closeSaveManager();toast('新世界已创建');return;
+      saveNow();installState(null,true);
+      Storage.createSlot(name,S,true);if(info.kind==='challenge')Storage.clearChallenge();
+      saveNow();closeSaveManager();toast('新世界已创建');return;
     }
     if(act==='load'){loadFreeSlot(id,false);return;}
     if(act==='rename'){const slot=Storage.listSlots().find(s=>s.id===id),name=window.prompt('新的存档名称：',slot?slot.name:'');if(name!==null){Storage.renameSlot(id,name);renderSaveManager();}return;}
@@ -1294,8 +1297,9 @@ $('saveImport').addEventListener('change',async e=>{
   try{
     const info=Storage.getActiveInfo();
     if(info.kind==='challenge'&&!window.confirm('导入并加载自由世界会结束当前挑战。继续吗？'))return;
-    saveNow();if(info.kind==='challenge')Storage.discardChallenge();
+    saveNow();
     const env=Storage.importText(await file.text()),loaded=Storage.loadSlot(env.id,true);
+    if(info.kind==='challenge')Storage.clearChallenge();
     installState(loaded.state,false);closeSaveManager();toast('已导入并加载存档');
   }catch(err){window.alert(err.message||'导入失败。');renderSaveManager();}
 });
