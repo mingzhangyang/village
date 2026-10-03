@@ -3,6 +3,7 @@ import { MAP, N, VKEYS } from './world/map.js';
 import { YEAR, SEASON, SEASONS, ageY, seasonIndex, dateLabel } from './simulation/clock.js';
 import { JOBS, POLICIES } from './simulation/constants.js';
 import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
+import { pickUi } from './ui/random.js';
 import { newState, normalizeState, setState, configureState } from './simulation/state.js';
 import { configureEconomy, pushHist, tick } from './simulation/economy.js';
 import { createChallenges } from './simulation/challenges.js';
@@ -706,7 +707,7 @@ function avatarSVG(p){
 }
 function updateFate(){
   let p=byId(S.sel);
-  if(!p){const q=pick(S.people);if(!q)return;S.sel=q.id;p=q;}
+  if(!p){const q=pickUi(S.people);if(!q)return;S.sel=q.id;p=q;}
   setH('fAvatar',avatarSVG(p));setT('fName',p.name);
   const vn=MAP.V[p.village].n;
   if(p.status==='alive')setT('fMeta',`${ageY(p)}岁，${p.gender}，住在${vn}`);
@@ -929,7 +930,7 @@ $('dilOn').addEventListener('change',e=>{S.dilemmasOn=e.target.checked;if(S.dile
 $('fRels').addEventListener('click',e=>{const b=e.target.closest('[data-id]');if(b){S.sel=+b.dataset.id;updateFate();}});
 document.querySelector('.quick').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||!S.people.length)return;const P=S.people;let p;
-  if(b.dataset.q==='rand')p=pick(P);
+  if(b.dataset.q==='rand')p=pickUi(P);
   else if(b.dataset.q==='happy')p=P.reduce((a,c)=>c.happiness>a.happiness?c:a);
   else p=P.reduce((a,c)=>c.happiness<a.happiness?c:a);
   S.sel=p.id;updateFate();

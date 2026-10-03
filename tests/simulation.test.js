@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { challengeDeadlineReached, createChallenges } from '../src/simulation/challenges.js';
 import { YEAR, SEASON } from '../src/simulation/clock.js';
 import { configureEconomy, tick } from '../src/simulation/economy.js';
 import { newState, normalizeState, setState } from '../src/simulation/state.js';
 import { rand, random } from '../src/simulation/random.js';
 import { remove, seedPopulation } from '../src/simulation/population.js';
+import { pickUi } from '../src/ui/random.js';
 
 function expectFiniteNumbers(value, path = 'state') {
   if (typeof value === 'number') {
@@ -23,6 +24,7 @@ function expectFiniteNumbers(value, path = 'state') {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   setState(null);
   configureEconomy({});
 });
@@ -126,6 +128,16 @@ describe('simulation smoke invariants', () => {
 
     expect(first.seed).toBe(second.seed);
     expect(first.rngState).toBe(first.seed);
+  });
+
+  it('keeps UI-only random choices out of the simulation stream', () => {
+    const state = newState(812);
+    setState(state);
+    const initialRngState = state.rngState;
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    expect(pickUi(['first', 'last'])).toBe('last');
+    expect(state.rngState).toBe(initialRngState);
   });
 
   it.each([
