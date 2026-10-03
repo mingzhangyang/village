@@ -10,6 +10,15 @@ export function challengeDeadlineReached(id, elapsedDays) {
   return Number.isFinite(deadline) && elapsedDays >= deadline;
 }
 
+function shuffle(values, rand) {
+  const result = values.slice();
+  for (let index = result.length - 1; index > 0; index--) {
+    const other = Math.floor(rand(0, index + 1));
+    [result[index], result[other]] = [result[other], result[index]];
+  }
+  return result;
+}
+
 export function createChallenges({ getState, YEAR, SEASON, clamp, rand, chron }) {
   return {
 
@@ -23,7 +32,7 @@ export function createChallenges({ getState, YEAR, SEASON, clamp, rand, chron })
       return {st:'run',txt:`还剩 ${120-el} 天。饿死 0 人，人口 ${S.people.length}（不少于 26）。`,pct:el/120};}},
   equal:{n:'均富之岛',d:'几户人家握着溪谷大半的财富，其余的人勉强度日。十年内，让贫富差距低于 0.35、平均幸福不低于 65，并连续保持 30 天。',
     setup(){const S=getState();
-      const ad=S.people.filter(p=>p.job!=='child').sort(()=>Math.random()-0.5);
+      const ad=shuffle(S.people.filter(p=>p.job!=='child'),rand);
       ad.forEach((p,k)=>{p.wealth=k<4?rand(200,280):rand(2,8);});
       S.tax=0.08;S.policy='market';},
     check(c,el){const S=getState();

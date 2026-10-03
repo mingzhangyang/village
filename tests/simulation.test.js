@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { challengeDeadlineReached, createChallenges } from '../src/simulation/challenges.js';
 import { YEAR, SEASON } from '../src/simulation/clock.js';
 import { configureEconomy, tick } from '../src/simulation/economy.js';
-import { newState, setState } from '../src/simulation/state.js';
+import { newState, normalizeState, setState } from '../src/simulation/state.js';
+import { rand, random } from '../src/simulation/random.js';
 import { remove, seedPopulation } from '../src/simulation/population.js';
 
 function expectFiniteNumbers(value, path = 'state') {
@@ -32,27 +33,42 @@ function createChallengeRules(state) {
     YEAR,
     SEASON,
     clamp: (value, min, max) => Math.min(max, Math.max(min, value)),
-    rand: (min, max) => min + Math.random() * (max - min),
+    rand,
     chron: () => {},
   });
 }
 
+function configureSmokeEconomy() {
+  configureEconomy({
+    buildingCount: () => 0,
+    totalBuildingCount: () => 0,
+    foodCapacity: () => 450,
+    computeHouses: () => {},
+    maybeDilemma: () => {},
+    checkChallenge: () => {},
+  });
+}
+
+function runSeededTicks(seed, count) {
+  const state = newState(seed);
+  setState(state);
+  seedPopulation();
+  configureSmokeEconomy();
+  for (let day = 0; day < count; day++) tick();
+  return JSON.parse(JSON.stringify(state));
+}
+
 describe('simulation smoke invariants', () => {
   it('creates a complete new state and advances a tick without non-finite numbers', () => {
-    const state = newState();
+    const state = newState(1);
     setState(state);
     seedPopulation();
-    configureEconomy({
-      buildingCount: () => 0,
-      totalBuildingCount: () => 0,
-      foodCapacity: () => 450,
-      computeHouses: () => {},
-      maybeDilemma: () => {},
-      checkChallenge: () => {},
-    });
+    configureSmokeEconomy();
 
     expect(state).toMatchObject({
       v: 1,
+      seed: 1,
+      rngState: expect.any(Number),
       day: 0,
       people: expect.any(Array),
       dead: expect.any(Array),
@@ -66,6 +82,50 @@ describe('simulation smoke invariants', () => {
     expectFiniteNumbers(state);
     const livingIds = new Set(state.people.map(person => person.id));
     expect(state.dead.every(person => !livingIds.has(person.id))).toBe(true);
+  });
+
+  it('replays the same simulation from the same world seed and input', () => {
+    const first = runSeededTicks(739391, 6);
+    const second = runSeededTicks(739391, 6);
+
+    expect(second).toEqual(first);
+  });
+
+  it('sets up a challenge with the same random choices from the same seed', () => {
+    function setupEqualChallenge(seed) {
+      const state = newState(seed);
+      setState(state);
+      seedPopulation();
+      createChallengeRules(state).equal.setup();
+      return state.people.map(person => [person.id, person.wealth]);
+    }
+
+    expect(setupEqualChallenge(5129)).toEqual(setupEqualChallenge(5129));
+  });
+
+  it('resumes the saved random stream after state normalization', () => {
+    const state = newState(8241);
+    setState(state);
+    random();
+    random();
+    const restored = normalizeState(JSON.parse(JSON.stringify(state)));
+
+    setState(state);
+    const expected = random();
+    setState(restored);
+
+    expect(random()).toBe(expected);
+  });
+
+  it('assigns a stable seed when loading a legacy state without RNG fields', () => {
+    const legacy = newState(91);
+    delete legacy.seed;
+    delete legacy.rngState;
+    const first = normalizeState(legacy);
+    const second = normalizeState(JSON.parse(JSON.stringify(legacy)));
+
+    expect(first.seed).toBe(second.seed);
+    expect(first.rngState).toBe(first.seed);
   });
 
   it.each([

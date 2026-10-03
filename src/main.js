@@ -2,7 +2,7 @@ import { createHejingStorage } from './storage/index.js';
 import { MAP, N, VKEYS } from './world/map.js';
 import { YEAR, SEASON, SEASONS, ageY, seasonIndex, dateLabel } from './simulation/clock.js';
 import { JOBS, POLICIES } from './simulation/constants.js';
-import { rand, randi, pick, clamp, has } from './simulation/random.js';
+import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
 import { newState, normalizeState, setState, configureState } from './simulation/state.js';
 import { configureEconomy, pushHist, tick } from './simulation/economy.js';
 import { createChallenges } from './simulation/challenges.js';
@@ -44,7 +44,7 @@ const SEEDS=[
     go(){
       S.mine=true;chron('有人在山脚下发现了一条矿脉。','event');
       const ws=S.people.filter(isWorker).sort((a,b)=>a.wealth-b.wealth);let n=0;
-      for(const p of ws){if(n>=Math.max(2,Math.ceil(ws.length*0.25)))break;if(n<2||Math.random()<0.35){p.job='miner';p.skill*=0.5;log(p,'听说发现了矿脉，扛起镐头当了矿工');n++;}}
+      for(const p of ws){if(n>=Math.max(2,Math.ceil(ws.length*0.25)))break;if(n<2||random()<0.35){p.job='miner';p.skill*=0.5;log(p,'听说发现了矿脉，扛起镐头当了矿工');n++;}}
     }},
   {k:'immigrants',n:'迎来移民',d:'五到七位陌生人前来定居',cd:20,
     st:()=>S.ch&&S.ch.id==='grow'&&!S.ch.result?'本挑战不可用':cdState('immigrants'),dis:()=>cdLeft('immigrants')>0||(S.ch&&S.ch.id==='grow'&&!S.ch.result),on:()=>false,
@@ -96,7 +96,7 @@ const DILEMMAS={
     opts:()=>[
       {t:'答应交易',h:'粮食 +50，公库 −60',ok:()=>S.treasury>=60,go(){S.treasury-=60;S.food+=50;return '商队卸下粮袋，粮仓里多了 50 担粮食。';}},
       {t:'讨价还价',h:'也许能少花点，也许会谈崩',go(){
-        if(Math.random()<0.55){const c=Math.min(35,S.treasury);S.treasury-=c;S.food+=50;return `商队首领笑着让了步，只收了 ${Math.round(c)} 金。`;}
+        if(random()<0.55){const c=Math.min(35,S.treasury);S.treasury-=c;S.food+=50;return `商队首领笑着让了步，只收了 ${Math.round(c)} 金。`;}
         for(const p of S.people)if(p.job==='merchant')p.happiness=clamp(p.happiness-5,0,100);
         return '商队觉得受了冒犯，转身离开了。溪湾的商人们有些失落。';}},
       {t:'婉拒',h:'一切照旧',go:()=>'商队收起货物，继续上路了。'}
@@ -122,7 +122,7 @@ const DILEMMAS={
         const f=Math.round(sum/2.5);S.food+=f;return `征得 ${Math.round(sum)} 金，从岛外买回 ${f} 担粮食。`;}},
       {t:'登门劝捐',h:'看他们愿不愿意，捐多少算多少',go(){
         let sum=0;const names=[];
-        for(const id of d.ids){const p=living(id);if(!p)continue;if(Math.random()<(p.happiness>55||has(p,'好客')?0.75:0.3)){const x=Math.max(0,p.wealth)*0.25;p.wealth-=x;sum+=x;p.happiness=clamp(p.happiness+6,0,100);names.push(p.name);log(p,`主动捐出 ${Math.round(x)} 金买粮`);}}
+        for(const id of d.ids){const p=living(id);if(!p)continue;if(random()<(p.happiness>55||has(p,'好客')?0.75:0.3)){const x=Math.max(0,p.wealth)*0.25;p.wealth-=x;sum+=x;p.happiness=clamp(p.happiness+6,0,100);names.push(p.name);log(p,`主动捐出 ${Math.round(x)} 金买粮`);}}
         if(!sum)return '三户都推说手头紧，一分也没捐。';
         const f=Math.round(sum/2.5);S.food+=f;S.cohesion=clamp(S.cohesion+3,0,100);return `${names.join('、')}捐了 ${Math.round(sum)} 金，买回 ${f} 担粮食。`;}},
       {t:'不干预',h:'各家自己想办法',go:()=>'富户们照旧过日子，穷人只能勒紧裤腰带。'}
@@ -162,7 +162,7 @@ const DILEMMAS={
         {t:`判给${nm(d.b)}`,h:`${nm(d.b)}满意，${nm(d.a)}不服`,go:judge(d.b,d.a)},
         {t:'调解：公库出 10 金，地两人分',h:'也许能化敌为友，也许谁都不买账',ok:()=>S.treasury>=10,go(){
           S.treasury-=10;const A=living(d.a),B=living(d.b);if(!A||!B)return '这事已经不了了之。';
-          if(Math.random()<0.65){setRel(A,B,Math.max(A.rel[B.id]||0,50));log(A,`和${B.name}握手言和，成了朋友`);log(B,`和${A.name}握手言和，成了朋友`);return `${A.name}和${B.name}握手言和，还约好改天一起喝酒。`;}
+          if(random()<0.65){setRel(A,B,Math.max(A.rel[B.id]||0,50));log(A,`和${B.name}握手言和，成了朋友`);log(B,`和${A.name}握手言和，成了朋友`);return `${A.name}和${B.name}握手言和，还约好改天一起喝酒。`;}
           changeRel(A,B,-10);return '两人都不买账，各自气呼呼地走了。';}}
       ];}
   },
@@ -186,7 +186,7 @@ const DILEMMAS={
       {t:'停工整修十日',h:'矿工十日没有收入',go(){S.mineClosed=10;return '矿工们放下镐头，开始加固矿洞。';}},
       {t:'继续开采',h:'不耽误挣钱，但有风险',go(){
         const ms=S.people.filter(p=>p.job==='miner');
-        if(ms.length&&Math.random()<0.45){const m=pick(ms);m.health-=rand(50,85);log(m,'在矿洞塌方中受了重伤');for(const q of ms)q.happiness=clamp(q.happiness-10,0,100);return `矿洞塌了一角，${m.name}被压在石头下，受了重伤。`;}
+        if(ms.length&&random()<0.45){const m=pick(ms);m.health-=rand(50,85);log(m,'在矿洞塌方中受了重伤');for(const q of ms)q.happiness=clamp(q.happiness-10,0,100);return `矿洞塌了一角，${m.name}被压在石头下，受了重伤。`;}
         return '裂缝没有再扩大，大家松了一口气。';}}
     ]
   },
@@ -218,7 +218,7 @@ function maybeDilemma(){
   const c=[];
   for(const k in DILEMMAS){if(k===S.lastDil)continue;const d=DILEMMAS[k].when();if(d)c.push([k,d,k==='levy'?3:k==='sick'?2:1]);}
   if(!c.length){S.nextDilemma=S.day+5;return;}
-  let x=Math.random()*c.reduce((t,e)=>t+e[2],0);
+  let x=random()*c.reduce((t,e)=>t+e[2],0);
   for(const [k,d,w] of c){if((x-=w)<0){S.pending={k,d,res:null};S.lastDil=k;S.nextDilemma=S.day+randi(28,45);dirty=true;return;}}
 }
 let dlgKey='',dlgReturnFocus=null;

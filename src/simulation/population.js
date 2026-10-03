@@ -1,7 +1,7 @@
 import { MAP, VKEYS } from '../world/map.js';
 import { JOBS, TRAITS, SURN, GIVEN, SKIN, HAIR } from './constants.js';
 import { YEAR, ageY } from './clock.js';
-import { rand, randi, pick, clamp } from './random.js';
+import { random, rand, randi, pick, clamp } from './random.js';
 import { getState, markStateDirty } from './state.js';
 
 export const ta=p=>p.gender==='女'?'她':'他';
@@ -23,17 +23,17 @@ export function byId(id){
 export function uniqueName(){
   const S = getState();
   const used=new Set(S.people.map(p=>p.name));
-  for(let k=0;k<40;k++){const n=Math.random()<0.14?'阿'+pick(GIVEN):pick(SURN)+pick(GIVEN)+(Math.random()<0.45?pick(GIVEN):'');if(!used.has(n))return n;}
+  for(let k=0;k<40;k++){const n=random()<0.14?'阿'+pick(GIVEN):pick(SURN)+pick(GIVEN)+(random()<0.45?pick(GIVEN):'');if(!used.has(n))return n;}
   return pick(SURN)+pick(GIVEN)+pick(GIVEN);
 }
 export function foodDays(){
   const S = getState();let n=0;for(const p of S.people)n+=need(p);return n>0?S.food/n:999;}
 export function chooseJob(p){
   const S = getState();
-  if(S.mine&&Math.random()<0.22)return 'miner';
-  if(S.people.length&&foodDays()<20&&Math.random()<0.55)return p.village==='bay'?'fisher':'farmer';
+  if(S.mine&&random()<0.22)return 'miner';
+  if(S.people.length&&foodDays()<20&&random()<0.55)return p.village==='bay'?'fisher':'farmer';
   const T={grain:[['farmer',.66],['craftsman',.2],['merchant',.14]],pine:[['woodcutter',.5],['craftsman',.33],['farmer',.17]],bay:[['fisher',.55],['merchant',.28],['craftsman',.17]]}[p.village];
-  let x=Math.random();for(const [j,w] of T){if((x-=w)<0)return j;}return T[0][0];
+  let x=random();for(const [j,w] of T){if((x-=w)<0)return j;}return T[0][0];
 }
 export function freeSlot(v){
   const S = getState();
@@ -44,11 +44,11 @@ export function homeTile(p){
   const sl=MAP.V[p.village].slots;return sl[p.home%sl.length];}
 export function makePerson(o){
   const S = getState();
-  const p={id:S.nextId++,name:o.name||uniqueName(),gender:o.gender||(Math.random()<0.5?'男':'女'),age:o.age,village:o.village,job:'child',
+  const p={id:S.nextId++,name:o.name||uniqueName(),gender:o.gender||(random()<0.5?'男':'女'),age:o.age,village:o.village,job:'child',
     wealth:o.wealth!=null?o.wealth:0,happiness:o.happiness!=null?o.happiness:rand(50,68),health:100,skill:o.skill!=null?o.skill:rand(10,40),
     traits:[],rel:{},met:{},partner:null,parents:o.parents||[],children:[],hist:[],fed:1,hungerDays:0,sadDays:0,lastIncome:0,
     status:'alive',home:0,x:0,y:0,tx:0,ty:0,skin:pick(SKIN),hair:pick(HAIR),lastBirth:-999,plagueTag:0};
-  const nt=Math.random()<0.55?2:1;
+  const nt=random()<0.55?2:1;
   while(p.traits.length<nt){const t=pick(TRAITS);if(!p.traits.includes(t))p.traits.push(t);}
   if(p.age>=62*YEAR)p.job='elder';else if(p.age>=14*YEAR)p.job=chooseJob(p);
   p.home=o.home!=null?o.home:freeSlot(p.village);
@@ -124,7 +124,7 @@ export function remove(p,status,cause){
 export function nearestOf(list,h){let b=null,bd=1e9;for(let k=0;k<3;k++){const c=pick(list);const d=Math.hypot(c.i-h.i,c.j-h.j);if(d<bd){bd=d;b=c;}}return b;}
 export function assignTarget(p){
   const S = getState();
-  const V=MAP.V[p.village],home=homeTile(p);let t;const r=Math.random();
+  const V=MAP.V[p.village],home=homeTile(p);let t;const r=random();
   if(!isWorker(p))t=r<0.5?home:r<0.8?V.center:pick(V.slots);
   else if(r<0.62){
     switch(p.job){
@@ -133,7 +133,7 @@ export function assignTarget(p){
       case 'woodcutter':t=nearestOf(MAP.forest,home);break;
       case 'miner':t=S.mine?pick(MAP.mineAdj):V.center;break;
       case 'merchant':t=pick(MAP.plazas);break;
-      default:t=Math.random()<0.5?V.center:home;
+      default:t=random()<0.5?V.center:home;
     }
   }else t=r<0.85?home:V.center;
   p.tx=t.i+rand(-0.32,0.32);p.ty=t.j+rand(-0.32,0.32);

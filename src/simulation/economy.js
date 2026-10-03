@@ -1,7 +1,7 @@
 import { MAP, VKEYS } from '../world/map.js';
 import { JOBS } from './constants.js';
 import { YEAR, seasonIndex, ageY } from './clock.js';
-import { rand, pick, clamp, has } from './random.js';
+import { random, rand, pick, clamp, has } from './random.js';
 import { getState } from './state.js';
 import { isWorker, need, log, chron, notify, living, makePerson, setRel, changeRel, remove, assignTarget, foodDays, chooseJob, friendCount } from './population.js';
 
@@ -128,7 +128,7 @@ export function tick(){
       const cap=p.age>60*YEAR?100-(ageY(p)-60)*2.5:100;
       p.health=Math.min(Math.max(cap,0),p.health+(has(p,'体弱')?0.5:1.3)+(buildingCount(p.village,'well')?0.6:0));
     }
-    if(S.plague>0&&p.plagueTag!==S.plagueId&&Math.random()<0.035*(buildingCount(p.village,'well')?0.5:1)){
+    if(S.plague>0&&p.plagueTag!==S.plagueId&&random()<0.035*(buildingCount(p.village,'well')?0.5:1)){
       p.plagueTag=S.plagueId;
       p.health-=rand(15,38)*(has(p,'体弱')?1.5:1)*((p.job==='child'||p.job==='elder')?1.3:1);
       log(p,'染上了疫病');notify(p,'染上了疫病');
@@ -160,9 +160,9 @@ export function tick(){
   const byV={};for(const v of VKEYS)byV[v]=[];for(const p of P)byV[p.village].push(p);
   for(const p of P){
     let k=(has(p,'好客')?1.6:has(p,'内向')?0.5:1)*(S.festival>0?2:1)*(buildingCount(p.village,'teahouse')?1.4:1),times=0;
-    while(k>0){if(Math.random()<Math.min(1,k)*0.6)times++;k-=1;}
+    while(k>0){if(random()<Math.min(1,k)*0.6)times++;k-=1;}
     for(let t=0;t<times;t++){
-      const q=pick(Math.random()<0.75?byV[p.village]:P);if(!q||q===p)continue;
+      const q=pick(random()<0.75?byV[p.village]:P);if(!q||q===p)continue;
       let d=rand(-1.5,5);
       if(p.happiness<35||q.happiness<35)d-=3;
       if(has(p,'急躁'))d+=rand(-4,1);
@@ -178,7 +178,7 @@ export function tick(){
 
   // 伴侣
   for(const p of P){
-    if(p.partner||p.job==='child'||p.age<18*YEAR||p.age>50*YEAR||Math.random()>0.04)continue;
+    if(p.partner||p.job==='child'||p.age<18*YEAR||p.age>50*YEAR||random()>0.04)continue;
     for(const k in p.rel){
       if(p.rel[k]<70)continue;const q=living(+k);
       if(!q||q.partner||q.gender===p.gender||q.age<18*YEAR||q.age>50*YEAR)continue;
@@ -197,7 +197,7 @@ export function tick(){
     if(m.gender!=='女'||!m.partner||m.age<18*YEAR||m.age>42*YEAR||S.day-m.lastBirth<60)continue;
     const f=living(m.partner);if(!f)continue;
     if(fd<15||(m.happiness+f.happiness)/2<50)continue;
-    if(Math.random()>0.012*(P.length<60?1:0.3))continue;
+    if(random()>0.012*(P.length<60?1:0.3))continue;
     m.lastBirth=S.day;
     const c=makePerson({village:m.village,age:0,home:m.home,parents:[f.id,m.id],skill:rand(5,15),happiness:70});
     m.children.push(c.id);f.children.push(c.id);setRel(c,m,80);setRel(c,f,80);
@@ -210,9 +210,9 @@ export function tick(){
   for(const p of [...P]){
     let cause=null;
     if(p.health<=0)cause=p.hungerDays>2?'饥饿':'疫病';
-    else if(p.age>58*YEAR&&Math.random()<0.0006*(ageY(p)-57))cause='寿终';
+    else if(p.age>58*YEAR&&random()<0.0006*(ageY(p)-57))cause='寿终';
     if(cause){remove(p,'dead',cause);continue;}
-    if(p.sadDays>12&&p.job!=='child'&&Math.random()<0.06)remove(p,'left');
+    if(p.sadDays>12&&p.job!=='child'&&random()<0.06)remove(p,'left');
   }
   if(!P.length){chron('最后一个人也离开了。溪谷重归寂静。','death');S.paused=true;return;}
 
@@ -220,10 +220,10 @@ export function tick(){
   const wk=P.filter(isWorker),avgInc=wk.length?wk.reduce((t,p)=>t+p.lastIncome,0)/wk.length:0;
   const fd2=foodDays();
   for(const p of wk){
-    if(Math.random()>(fd2<15&&p.job!=='farmer'&&p.job!=='fisher'?0.03:0.004))continue;
+    if(random()>(fd2<15&&p.job!=='farmer'&&p.job!=='fisher'?0.03:0.004))continue;
     let nj=null;
-    if(fd2<15&&p.job!=='farmer'&&p.job!=='fisher'&&Math.random()<0.6)nj=p.village==='bay'?'fisher':'farmer';
-    else if(S.mine&&p.job!=='miner'&&p.wealth<avgW*0.7&&Math.random()<0.5)nj='miner';
+    if(fd2<15&&p.job!=='farmer'&&p.job!=='fisher'&&random()<0.6)nj=p.village==='bay'?'fisher':'farmer';
+    else if(S.mine&&p.job!=='miner'&&p.wealth<avgW*0.7&&random()<0.5)nj='miner';
     else if(p.lastIncome<avgInc*0.45)nj=chooseJob(p);
     if(nj&&nj!==p.job){p.job=nj;p.skill*=0.5;log(p,`改行做了${JOBS[nj].n}`);}
   }
@@ -238,7 +238,7 @@ export function tick(){
   S.cohesion=clamp(S.cohesion+(clamp(ct,0,100)-S.cohesion)*0.04,0,100);
 
   pushHist();
-  for(const p of P)if(Math.random()<0.4)assignTarget(p);
+  for(const p of P)if(random()<0.4)assignTarget(p);
   hooks.computeHouses?.();
   hooks.maybeDilemma?.();
   if(S.ch&&!S.ch.result)hooks.checkChallenge?.();
