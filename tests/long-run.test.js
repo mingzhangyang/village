@@ -74,7 +74,7 @@ describe('long-run deterministic simulation invariants', () => {
     configureLongRunEconomy();
     const policies = ['need', 'equal', 'work', 'market'];
 
-    for (let step = 0; step < 240 && state.people.length; step += 1) {
+    for (let step = 0; step < 240; step += 1) {
       if (step % 40 === 0) {
         state.policy = policies[(step / 40) % policies.length];
         state.tax = [0.05, 0.15, 0.25, 0.35][(step / 40) % 4];
@@ -83,7 +83,7 @@ describe('long-run deterministic simulation invariants', () => {
       if (step % 20 === 19 || state.people.length === 0) expectPopulationInvariants(state);
     }
 
-    expect(state.day).toBeGreaterThan(0);
-    expect(state.day).toBeLessThanOrEqual(240);
+    expectPopulationInvariants(state);
+    expect(state.day).toBe(240);
   });
 });
