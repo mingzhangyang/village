@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MIGRATION_RULES,
   cohesionBreakdown,
   happinessBreakdown,
   migrationBreakdown,
@@ -43,7 +44,7 @@ describe('explainability', () => {
 
     expect(result.rawTarget).toBeCloseTo(89.5, 10);
     expect(factorSum).toBeCloseTo(result.rawTarget, 10);
-    expect(result.factors).toEqual([
+    const expectedFactors = [
       { key: 'base', value: 30 },
       { key: 'wealth', value: 21 },
       { key: 'food', value: -6 },
@@ -60,7 +61,11 @@ describe('explainability', () => {
       { key: 'public', value: 4 },
       { key: 'market', value: 4 },
       { key: 'teahouse', value: 2 },
-    ]);
+    ];
+    expect(result.factors.map(factor => factor.key)).toEqual(expectedFactors.map(factor => factor.key));
+    result.factors.forEach((factor, index) => {
+      expect(factor.value).toBeCloseTo(expectedFactors[index].value, 10);
+    });
     expect(state).toEqual(beforeState);
     expect(person).toEqual(beforePerson);
   });
@@ -120,6 +125,17 @@ describe('explainability', () => {
     expect(equal.rawTarget - market.rawTarget).toBe(19);
   });
 
+  it('pins the migration rule values shared by simulation and UI', () => {
+    expect(MIGRATION_RULES).toEqual({
+      sadHappinessThreshold: 22,
+      warningSadDays: 7,
+      automaticSadDaysThreshold: 12,
+      automaticDailyChance: 0.06,
+      wanderMaxAge: 35 * 40,
+      wanderHappinessThreshold: 60,
+    });
+  });
+
   it('reports the exact automatic-leaving threshold without consuming RNG', () => {
     const base = {
       status: 'alive',
@@ -128,6 +144,10 @@ describe('explainability', () => {
       partner: null,
       happiness: 20,
     };
+
+    const before = structuredClone(base);
+    migrationBreakdown(base);
+    expect(base).toEqual(before);
 
     expect(migrationBreakdown({ ...base, sadDays: 12 })).toMatchObject({
       automaticEligible: false,

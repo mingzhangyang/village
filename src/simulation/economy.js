@@ -3,7 +3,7 @@ import { JOBS } from './constants.js';
 import { YEAR, seasonIndex, ageY } from './clock.js';
 import { random, rand, pick, clamp, has } from './random.js';
 import { getState } from './state.js';
-import { wealthStats, happinessBreakdown, cohesionBreakdown } from './explainability.js';
+import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './explainability.js';
 import { isWorker, need, log, chron, notify, living, makePerson, setRel, changeRel, remove, assignTarget, foodDays, chooseJob, friendCount } from './population.js';
 
 let hooks = {};
@@ -152,8 +152,8 @@ export function tick(){
       teahouseCount:buildingCount(p.village,'teahouse')
     });
     p.happiness=clamp(p.happiness+(why.rawTarget-p.happiness)*0.07+rand(-0.8,0.8),0,100);
-    if(p.happiness<22)p.sadDays++;else p.sadDays=Math.max(0,p.sadDays-1);
-    if(p.sadDays===7&&p.job!=='child')notify(p,'愁苦了很久，再这样下去可能会离开溪谷');
+    if(p.happiness<MIGRATION_RULES.sadHappinessThreshold)p.sadDays++;else p.sadDays=Math.max(0,p.sadDays-1);
+    if(p.sadDays===MIGRATION_RULES.warningSadDays&&p.job!=='child')notify(p,'愁苦了很久，再这样下去可能会离开溪谷');
   }
 
   // 来往
@@ -212,7 +212,8 @@ export function tick(){
     if(p.health<=0)cause=p.hungerDays>2?'饥饿':'疫病';
     else if(p.age>58*YEAR&&random()<0.0006*(ageY(p)-57))cause='寿终';
     if(cause){remove(p,'dead',cause);continue;}
-    if(p.sadDays>12&&p.job!=='child'&&random()<0.06)remove(p,'left');
+    const migration=migrationBreakdown(p);
+    if(migration.automaticEligible&&random()<migration.dailyChance)remove(p,'left');
   }
   if(!P.length){chron('最后一个人也离开了。溪谷重归寂静。','death');S.paused=true;return;}
 

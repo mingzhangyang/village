@@ -6,7 +6,7 @@ import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
 import { pickUi } from './ui/random.js';
 import { newState, normalizeState, setState, configureState } from './simulation/state.js';
 import { configureEconomy, pushHist, tick } from './simulation/economy.js';
-import { wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './simulation/explainability.js';
+import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './simulation/explainability.js';
 import { createChallenges } from './simulation/challenges.js';
 import { BUILDS } from './simulation/buildings.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
@@ -204,7 +204,7 @@ const DILEMMAS={
     ]
   },
   wander:{
-    when(){const ps=S.people.filter(q=>isWorker(q)&&q.age<35*YEAR&&!q.partner&&q.happiness<60);return ps.length?{p:pick(ps).id}:null;},
+    when(){const ps=S.people.filter(q=>migrationBreakdown(q).wanderEligible);return ps.length?{p:pick(ps).id}:null;},
     title:()=>'想出去闯闯的年轻人',
     text:d=>{const p=byId(d.p);return `${p.name}（${ageY(p)}岁，${JOBS[p.job].n}）说岛上的日子一眼望得到头，想去外面闯一闯。`;},
     opts:d=>{const p=byId(d.p),t=p?ta(p):'他';return [
@@ -763,7 +763,7 @@ function updateFate(){
     setH('fHappyWhy','<span class="empty">没有当前驱动因素。</span>');
   }
   const moveWhy=migrationBreakdown(p);
-  let moveText='幸福低于 22 会累积深度愁苦日；超过 12 日后，每日有 6% 概率自动离开。';
+  let moveText=`幸福低于 ${MIGRATION_RULES.sadHappinessThreshold} 会累积深度愁苦日；超过 ${MIGRATION_RULES.automaticSadDaysThreshold} 日后，每日有 ${Math.round(MIGRATION_RULES.automaticDailyChance*100)}% 概率自动离开。`;
   if(!moveWhy.alive)moveText='这位居民已不在溪谷，不再计算离开风险。';
   else if(!moveWhy.adult)moveText+=' 当前是孩童，不会因此自动离开。';
   else if(moveWhy.automaticEligible)moveText+=` 当前已累计 ${moveWhy.sadDays} 日，自动离开风险已生效。`;
