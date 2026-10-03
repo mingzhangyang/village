@@ -3,7 +3,7 @@ import { JOBS, TRAITS, SURN, GIVEN, SKIN, HAIR } from './constants.js';
 import { YEAR, ageY } from './clock.js';
 import { random, rand, randi, pick, clamp } from './random.js';
 import { getState, markStateDirty } from './state.js';
-import { fallbackSurname, migratedFamilyName, personSurname, surnameFromName } from './names.js';
+import { defaultSurnameForNewPerson, knownPersonSurname, migratedFamilyName, surnameFromName } from './names.js';
 
 export const ta=p=>p.gender==='女'?'她':'他';
 export const isWorker=p=>p.job!=='child'&&p.job!=='elder';
@@ -56,9 +56,9 @@ export function makePerson(o){
   const parentPeople=(o.parents||[]).map(id=>byId(id)).filter(Boolean);
   const father=parentPeople.find(parent=>parent.gender==='男')||null;
   const id=S.nextId++;
-  const inheritedSurname=o.surname||personSurname(father);
+  const inheritedSurname=o.surname||knownPersonSurname(father);
   const name=o.name||uniqueName(inheritedSurname,id);
-  const surname=inheritedSurname||surnameFromName(name)||fallbackSurname(id);
+  const surname=inheritedSurname||surnameFromName(name)||defaultSurnameForNewPerson(id);
   const p={id,name,surname,gender:o.gender||(random()<0.5?'男':'女'),age:o.age,village:o.village,job:'child',
     wealth:o.wealth!=null?o.wealth:0,happiness:o.happiness!=null?o.happiness:rand(50,68),health:100,skill:o.skill!=null?o.skill:rand(10,40),
     traits:[],rel:{},met:{},partner:null,parents:o.parents||[],children:[],hist:[],fed:1,hungerDays:0,sadDays:0,lastIncome:0,

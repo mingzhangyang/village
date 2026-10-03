@@ -6,7 +6,7 @@ export function surnameFromName(name) {
   return SURN.find(surname => value.startsWith(surname)) || null;
 }
 
-export function fallbackSurname(id) {
+export function defaultSurnameForNewPerson(id) {
   const numericId = Number.isFinite(id) ? Math.max(1, Math.abs(Math.trunc(id))) : 1;
   return SURN[(numericId - 1) % SURN.length];
 }
@@ -15,11 +15,6 @@ export function knownPersonSurname(person) {
   if (!person) return null;
   if (SURN.includes(person.surname)) return person.surname;
   return surnameFromName(person.name);
-}
-
-export function personSurname(person) {
-  if (!person) return null;
-  return knownPersonSurname(person) || fallbackSurname(person.id);
 }
 
 export function givenNameFromDisplayName(name) {

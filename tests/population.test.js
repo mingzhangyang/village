@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { changeRel, makePerson, remove, seedPopulation, setRel, uniqueName } from '../src/simulation/population.js';
 import { givenNameFromDisplayName, migratedFamilyName, surnameFromName } from '../src/simulation/names.js';
-import { newState, setState } from '../src/simulation/state.js';
+import { newState, normalizeState, setState } from '../src/simulation/state.js';
 import { MAX_PERSON_NAME_LENGTH } from '../src/state-contract.js';
 
 afterEach(() => {
@@ -97,6 +97,45 @@ describe('population', () => {
       expect(used.has(name)).toBe(false);
       used.add(name);
     }
+  });
+
+  it('does not infer a future child surname from an unknown legacy father id', () => {
+    const legacy = newState(9007);
+    delete legacy.familyNameVersion;
+    legacy.nextId = 3;
+    legacy.people = [
+      { id: 1, name: '阿松', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '周春', gender: '女', parents: [], hist: [] },
+    ];
+
+    const withFather = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const withoutFather = normalizeState(JSON.parse(JSON.stringify(legacy)));
+
+    setState(withFather);
+    const childWithUnknownFather = makePerson({
+      village: 'grain',
+      age: 0,
+      name: '许岚',
+      parents: [2, 1],
+      home: 0,
+    });
+
+    setState(withoutFather);
+    const controlChild = makePerson({
+      village: 'grain',
+      age: 0,
+      name: '许岚',
+      parents: [2],
+      home: 0,
+    });
+
+    expect(withFather.people.find(person => person.id === 1).surname).toBeNull();
+    expect(childWithUnknownFather.name).toBe('许岚');
+    expect(childWithUnknownFather.surname).toBe('许');
+    expect(childWithUnknownFather).toMatchObject({
+      name: controlChild.name,
+      surname: controlChild.surname,
+    });
   });
 
   it('does not treat a lone mother as a father when creating a child', () => {
