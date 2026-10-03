@@ -26,6 +26,7 @@ const FAMILY_NAME_VERSION = 1;
 function rewriteRenamedResidents(state, originalNames) {
   const everyone = [...state.people, ...state.dead].filter(person => person && typeof person === 'object');
   const residentsByOriginalName = new Map();
+  const residentsById = new Map(everyone.map(person => [person.id, person]));
 
   for (const person of everyone) {
     const before = originalNames.get(person);
@@ -71,8 +72,13 @@ function rewriteRenamedResidents(state, originalNames) {
   for (const entry of state.chron) if (entry && typeof entry.t === 'string') entry.t = rewrite(entry.t);
   for (const alert of state.alerts) {
     if (!alert || typeof alert !== 'object') continue;
-    alert.name = rewrite(alert.name);
-    alert.text = rewrite(alert.text);
+    const resident = residentsById.get(alert.id);
+    const before = resident ? originalNames.get(resident) : null;
+    const replacements = before && resident.name !== before
+      ? new Map(sharedReplacements).set(before, resident.name)
+      : sharedReplacements;
+    alert.name = rewrite(alert.name, replacements);
+    alert.text = rewrite(alert.text, replacements);
   }
   state.lastHunger = rewrite(state.lastHunger);
   state.lastLeft = rewrite(state.lastLeft);

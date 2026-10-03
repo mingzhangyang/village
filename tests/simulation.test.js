@@ -182,6 +182,10 @@ describe('simulation smoke invariants', () => {
       { id: 6, name: '叶岚', gender: '男', parents: [5, 4], hist: [{ d: 0, t: '叶岚出生' }] },
     ];
     legacy.chron = [{ d: 0, t: '叶岚曾经住在禾谷村。', k: 'info' }];
+    legacy.alerts = [
+      { id: 3, name: '叶岚', text: '叶岚需要帮助' },
+      { id: 6, name: '叶岚', text: '叶岚已经离开' },
+    ];
 
     const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
     const livingChild = restored.people.find(person => person.id === 3);
@@ -192,6 +196,8 @@ describe('simulation smoke invariants', () => {
     expect(livingChild.hist[0].t).toBe('许岚出生');
     expect(deceasedChild.hist[0].t).toBe('林岚出生');
     expect(restored.chron[0].t).toBe('叶岚曾经住在禾谷村。');
+    expect(restored.alerts[0]).toEqual({ id: 3, name: '许岚', text: '许岚需要帮助' });
+    expect(restored.alerts[1]).toEqual({ id: 6, name: '林岚', text: '林岚已经离开' });
   });
 
   it('protects unchanged longer resident names from shorter-name rewrites', () => {
