@@ -3,6 +3,7 @@ import { JOBS } from './constants.js';
 import { YEAR, seasonIndex, ageY } from './clock.js';
 import { random, rand, pick, clamp, has } from './random.js';
 import { getState } from './state.js';
+import { wealthStats, happinessBreakdown, cohesionBreakdown } from './explainability.js';
 import { isWorker, need, log, chron, notify, living, makePerson, setRel, changeRel, remove, assignTarget, foodDays, chooseJob, friendCount } from './population.js';
 
 let hooks = {};
@@ -138,20 +139,19 @@ export function tick(){
   }
 
   // 幸福
-  const ws=P.map(p=>Math.max(0,p.wealth)).sort((a,b)=>a-b),n=ws.length,sumW=ws.reduce((a,b)=>a+b,0);
-  let gn=0;if(sumW>0){let cum=0;for(let k=0;k<n;k++)cum+=(k+1)*ws[k];gn=(2*cum)/(n*sumW)-(n+1)/n;}
-  const avgW=sumW/n;S.gini=gn;
+  const {average:avgW,gini:gn}=wealthStats(P);S.gini=gn;
   for(const p of P){
-    const fr=friendCount(p);
-    let t=30+Math.log2(1+Math.max(0,p.wealth))*4.2;
-    t+=p.fed>=0.95?12:-30*(1-p.fed);
-    t+=Math.min(5,fr)*3.5+(p.partner?8:0)+(p.health-75)/5;
-    t-=S.tax*(p.wealth>avgW?40:15);
-    t-=gn*(p.wealth<avgW?28:8);
-    if(p.job==='child')t+=15;
-    if(S.festival>0)t+=14;if(S.drought>0)t-=5;if(se===3)t-=3;if(has(p,'乐天'))t+=7;
-    t+=Math.min(6,S.publicPerCap*8)+2*Math.min(2,buildingCount(p.village,'market'))+2*Math.min(2,buildingCount(p.village,'teahouse'));
-    p.happiness=clamp(p.happiness+(t-p.happiness)*0.07+rand(-0.8,0.8),0,100);
+    const why=happinessBreakdown({
+      state:S,
+      person:p,
+      averageWealth:avgW,
+      gini:gn,
+      seasonIndex:se,
+      friendCount:friendCount(p),
+      marketCount:buildingCount(p.village,'market'),
+      teahouseCount:buildingCount(p.village,'teahouse')
+    });
+    p.happiness=clamp(p.happiness+(why.rawTarget-p.happiness)*0.07+rand(-0.8,0.8),0,100);
     if(p.happiness<22)p.sadDays++;else p.sadDays=Math.max(0,p.sadDays-1);
     if(p.sadDays===7&&p.job!=='child')notify(p,'愁苦了很久，再这样下去可能会离开溪谷');
   }
@@ -231,11 +231,14 @@ export function tick(){
   // 凝聚力
   const avgF=P.reduce((t,p)=>t+friendCount(p),0)/P.length;
   const sadFrac=P.filter(p=>p.happiness<35).length/P.length;
-  let ct=40+avgF*6-gn*40+Math.min(10,S.publicPerCap*12)+(S.festival>0?10:0)-sadFrac*25;
-  if(S.drought>0)ct+=(pol==='need'||pol==='equal')?4:-8;
-  ct+=pol==='market'?-4:pol==='equal'?3:0;
-  ct+=3*Math.min(2,totalBuildingCount('teahouse'));
-  S.cohesion=clamp(S.cohesion+(clamp(ct,0,100)-S.cohesion)*0.04,0,100);
+  const cohesionWhy=cohesionBreakdown({
+    state:S,
+    averageFriends:avgF,
+    sadFraction:sadFrac,
+    gini:gn,
+    teahouseCount:totalBuildingCount('teahouse')
+  });
+  S.cohesion=clamp(S.cohesion+(cohesionWhy.target-S.cohesion)*0.04,0,100);
 
   pushHist();
   for(const p of P)if(random()<0.4)assignTarget(p);

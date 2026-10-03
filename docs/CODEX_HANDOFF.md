@@ -1,4 +1,4 @@
-# Codex 交接：Village Phase 2 — Simulation Core
+# Codex 交接：Village Phase 5 — Explainability
 
 更新日期：2026-10-03
 
@@ -6,198 +6,104 @@
 
 仓库：`mingzhangyang/village`
 
-本交接文档假定 Save System v2 的 PR 已合并。当前应用仍然是无需构建即可运行的静态应用：
+已完成并合并：
 
-- `index.html`：页面结构
-- `styles.css`：样式
-- `storage.js`：Save System v2，作为明确的存储边界
-- `app.js`：模拟、玩法、Canvas 渲染和 UI
-- `README.md`：运行和存档说明
+- Phase 2 — Simulation Core：PR #3
+- Phase 3 — Deterministic Simulation：PR #4
+- Phase 4 — Simulation Test Suite：PR #5
 
-Save System v2 已完成：
+当前 `main` 已具备 Vite / Vitest / ESLint、ES modules、Save System v2、seeded RNG，以及 economy / population / relationships / challenges / save migration / long-run invariant 测试。
 
-- 最多 5 个自由世界存档
-- 自动/手动保存
-- JSON 导入和导出
-- 导入非破坏性：始终创建新槽
-- `hejing-save-v1` → v2 自动迁移
-- 最小存档结构校验和损坏存档防护
-- 挑战独立存档，不覆盖自由世界
-- 挑战结束可回到原自由世界，也可把挑战世界另存为自由存档
-- 页面隐藏 / pagehide 时立即保存
+Phase 5 工作分支：
 
-### 重要 localStorage 契约
+`feat/explainability`
 
-不要在架构迁移时改掉这些 key 或绕过迁移：
+## 2. Phase 5 目标
 
-- `hejing-save-index-v2`
-- `hejing-save-v2:<slot-id>`
-- `hejing-challenge-v2`
-- `hejing-wins-v1`
-- 旧版兼容输入：`hejing-save-v1`、`hejing-wins`
+让玩家能够直接理解“为什么世界变成这样”，而不是只看到数值结果。
 
-`storage.js` 暴露 `window.HejingStorage`。Phase 2 可以把它迁到 ES module，但必须保持现有 v2 数据可读，不能让已创建的存档失效。
+第一批解释范围：
 
-## 2. 下一阶段目标
+- 个人幸福：把现有幸福公式拆成可展示的正负贡献。
+- 社会凝聚力：展示朋友、贫富差距、公共投入、愁苦人口、制度、灾害和茶馆等贡献。
+- 离开 / 迁移风险：明确长期深度愁苦的自动离开阈值与每日概率，并提示“出去闯闯”事件候选条件。
 
-下一阶段是 **Phase 2 — Simulation Core 架构拆分**。
+解释层必须复用生产模拟的同一套纯计算，避免 UI 文案与真实公式漂移。
 
-目标不是增加玩法，也不是改变数值平衡，而是建立一个可以继续演进和测试的工程结构。
+## 3. 架构边界
 
-建议分支：
+Phase 5 仍然不做玩法调参：
 
-`refactor/simulation-core`
+- 不改经济参数。
+- 不改人口增长率。
+- 不改挑战难度。
+- 不改 seeded RNG 算法或随机调用顺序。
+- 不改 Save System v2 key/schema。
+- 解释数据由当前 state 派生，不写入存档。
 
-建议引入：
+建议核心模块：
 
-- Vite
-- Vitest
-- ESLint（保持轻量规则）
-- ES modules
+`src/simulation/explainability.js`
 
-发布物仍应是纯静态 HTML/CSS/JS，可部署 GitHub Pages。
+生产模拟与 UI 都调用这里的纯函数。
 
-## 3. 推荐目录
+## 4. 行为兼容要求
 
-建议逐步迁移到：
+必须继续保留：
 
-```text
-src/
-  simulation/
-    state.js
-    clock.js
-    economy.js
-    population.js
-    relationships.js
-    health.js
-    events.js
-    challenges.js
-    buildings.js
+- 三个聚落、地图和 Canvas 行为
+- 一年 40 天、四季各 10 天
+- 四个挑战及完成记录
+- 所有事件、两难抉择、建筑和人物关系
+- Save System v2 与 v1 迁移
+- deterministic simulation：同 seed + 同输入仍得到同结果
+- 手机 pointer/touch
+- dialog focus trap / restore
 
-  world/
-    map.js
-    villages.js
+尤其注意：Explainability 不得额外消费 RNG。
 
-  storage/
-    index.js
-    migrations.js
+## 5. 测试要求
 
-  ui/
-    stats.js
-    fate.js
-    dialogs.js
-    saves.js
-    timeline.js
-    controls.js
+至少覆盖：
 
-  render/
-    map-renderer.js
+- 财富平均值与 Gini 的派生计算
+- 幸福贡献相加后与生产公式一致
+- 凝聚力贡献相加后与生产公式一致
+- 自动离开风险严格在 `sadDays > 12` 生效
+- Explainability 函数不修改输入 state/person
 
-  main.js
-```
+并继续跑现有：
 
-这只是职责边界建议，不要求为了目录好看而机械拆文件。优先抽纯逻辑，避免循环依赖。
+- `npm test`
+- `npm run lint`
+- `npm run build`
 
-## 4. 推荐迁移顺序
+## 6. UI 原则
 
-1. 建立 Vite/Vitest/ESLint 骨架，保证现有页面能启动和 build。
-2. 先迁 `storage.js` 到 `src/storage`，用兼容层保持所有 v2 key 与 schema 不变。
-3. 抽出 state/newState/normalization 和常量。
-4. 抽出挑战规则、建筑规则、经济计算等纯逻辑。
-5. 再拆 population / relationships / health。
-6. 最后拆 Canvas renderer 和 DOM UI。
-7. `main.js` 只负责初始化、composition、事件接线和主循环。
+解释要就地出现，不新增复杂页面：
 
-不要一次性重写整个应用。
+- 顶部凝聚力指标下方提供可展开原因分解。
+- 命运追踪里显示当前人物的幸福驱动因素。
+- 同一区域显示离开风险及触发条件。
+- 优先展示影响最大的正负因素，避免把完整公式直接塞给玩家。
 
-## 5. 行为兼容要求
+## 7. CI / 推送约束
 
-Phase 2 是 architecture-only PR。以下行为必须保留：
+CI 资源继续节省：
 
-- 三个聚落、地图布局和 Canvas 视觉
-- 当前一年 40 天、四季各 10 天
-- 现有四个挑战和挑战完成记录
-- 大旱挑战每年夏季 10 天
-- 税率、粮食政策、事件、两难抉择
-- 建筑、搬家、人物关系和命运追踪
-- 所有 Save System v2 行为
-- 旧 v1 存档迁移
-- 手机 pointer/touch 行为
-- dialog focus trap / focus restore
+- 本地/静态检查先完成。
+- 一批修改集中成一个提交再推送。
+- CI 保持 lint + unit tests + build。
+- 不引入 Playwright 全量 E2E。
 
-不要在这个 PR 同时调整经济参数、人口增长率或挑战难度。
+## 8. Phase 5 完成标准
 
-## 6. 测试基线
+当且仅当：
 
-Phase 2 至少补这些低成本测试，避免只靠浏览器手测：
-
-### storage
-
-- v1 state 能迁移到 v2，成功后才删除 v1 key
-- 损坏 JSON 不会覆盖/删除其他存档
-- import 创建新槽，不覆盖 active slot
-- slot 上限为 5
-- challenge start 保留 origin slot
-- returnToOrigin 恢复挑战前自由世界
-- v2 envelope export → import round trip
-
-### simulation smoke
-
-在尚未完成 deterministic RNG 前，不要断言随机结果，只验证稳定 invariant：
-
-- newState 基本字段完整
-- tick 后关键数值不是 NaN/Infinity
-- dead/left 人物不会同时继续留在 living people
-- challenge 的期限和结束条件没有 off-by-one
-
-## 7. 后续阶段，不要提前混入
-
-### Phase 3 — Deterministic Simulation
-
-随后单独做 seeded RNG：
-
-- world seed
-- 替换核心模拟中的 `Math.random()`
-- 同 seed + 同输入得到同结果
-- 为未来“每日/每周挑战种子”打基础
-
-不要把这个工作混进 Phase 2。
-
-### Phase 4 — Simulation Test Suite
-
-在 deterministic RNG 完成后扩展：
-
-- economy
-- population
-- relationships
-- challenge
-- save migration
-- 长时间 invariant / fuzz simulation
-
-### Phase 5 — Explainability
-
-再做幸福、凝聚力、迁移等指标的原因分解，让玩家能理解“为什么世界变成这样”。
-
-## 8. CI / 推送约束
-
-CI 资源要节省：
-
-- 不要为了小修复频繁 push。
-- 尽量本地完成一批修改和测试后集中推送。
-- Phase 2 的 CI 只需要 lint + unit tests + build。
-- 暂时不要引入每次 PR 都跑的重型 Playwright 全量 E2E。
-
-## 9. 完成标准
-
-Phase 2 可以认为完成，当且仅当：
-
-- `npm test` 通过
-- `npm run build` 通过
-- `npm run lint` 通过
-- 页面主要玩法与当前版本行为一致
-- Save System v2 的现有浏览器数据仍可直接读取
-- 没有改动存档 key/schema 兼容约定
-- `app.js` 的主要职责已经迁出，不再是单个巨型模拟+UI文件
-- PR 描述明确列出迁移边界、保留行为和验证结果
-
-如果发现行为 bug，可以在 PR 中修复“迁移导致的回归”；与架构无关的旧玩法 bug请单独记录，不要顺手扩大范围。
+- 生产模拟复用 explainability 纯计算，而不是复制第二套公式
+- 幸福、凝聚力、离开风险在 UI 中可解释
+- 不新增存档字段，不破坏旧存档
+- 不改变 RNG 消费顺序
+- 新增 explainability 单元测试
+- lint / unit tests / build 全部通过
+- PR 描述明确列出公式复用、兼容边界和验证结果
