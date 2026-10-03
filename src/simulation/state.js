@@ -132,45 +132,73 @@ function repairLegacyFamilyNames(state) {
 
   for (const person of ordered) person.surname = personSurname(person);
 
-  const visitState = new Map();
-  const ancestryResolved = new Map();
-  const migratePerson = person => {
-    const status = visitState.get(person);
-    if (status === 'done') return ancestryResolved.get(person) !== false;
-    if (status === 'visiting') return false;
-
-    visitState.set(person, 'visiting');
+  const fatherByPerson = new Map();
+  for (const person of ordered) {
     const parents = Array.isArray(person.parents)
       ? person.parents.map(id => byId.get(id)).filter(Boolean)
       : [];
-    const father = parents.find(parent => parent.gender === '男') || null;
-    const resolved = father
-      ? father !== person && migratePerson(father)
-      : true;
+    fatherByPerson.set(person, parents.find(parent => parent.gender === '男') || null);
+  }
 
-    if (father && resolved) {
-      const surname = personSurname(father);
-      if (surname) {
-        person.surname = surname;
-        if (!(typeof person.name === 'string' && person.name.startsWith(surname))) {
-          const oldName = person.name;
-          const isLiving = livingSet.has(person);
-          if (isLiving) releaseName(oldName);
-          const nextName = migratedFamilyName(person, surname, isLiving ? usedNames : new Set());
-          person.name = nextName;
-          if (isLiving) reserveName(nextName);
-        }
-      }
+  const ancestryResolved = new Map();
+  const applyFatherSurname = person => {
+    const father = fatherByPerson.get(person);
+    if (!father) return;
+
+    const surname = personSurname(father);
+    if (!surname) return;
+
+    person.surname = surname;
+    if (typeof person.name === 'string' && person.name.startsWith(surname)) return;
+
+    const oldName = person.name;
+    const isLiving = livingSet.has(person);
+    if (isLiving) releaseName(oldName);
+    const nextName = migratedFamilyName(person, surname, isLiving ? usedNames : new Set());
+    person.name = nextName;
+    if (isLiving) reserveName(nextName);
+  };
+
+  const migratePerson = start => {
+    if (ancestryResolved.has(start)) return ancestryResolved.get(start) !== false;
+
+    const path = [];
+    const pathSet = new Set();
+    let current = start;
+
+    while (current && !ancestryResolved.has(current) && !pathSet.has(current)) {
+      path.push(current);
+      pathSet.add(current);
+      current = fatherByPerson.get(current) || null;
     }
 
-    visitState.set(person, 'done');
-    ancestryResolved.set(person, resolved);
-    return resolved;
+    const hitCycle = !!current && pathSet.has(current);
+    const upstreamResolved = current && ancestryResolved.has(current)
+      ? ancestryResolved.get(current) !== false
+      : !hitCycle;
+
+    if (!upstreamResolved) {
+      for (const person of path) ancestryResolved.set(person, false);
+      return false;
+    }
+
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      const person = path[index];
+      const father = fatherByPerson.get(person);
+      const resolved = father
+        ? father !== person && ancestryResolved.get(father) !== false
+        : true;
+      if (father && resolved) applyFatherSurname(person);
+      ancestryResolved.set(person, resolved);
+    }
+
+    return ancestryResolved.get(start) !== false;
   };
 
   // Imported saves do not require IDs to follow ancestry order. Starting from a
-  // stable ID order keeps collision handling deterministic, while recursion makes
-  // sure every resolvable father has reached his final surname before descendants.
+  // stable ID order keeps collision handling deterministic. Iterative ancestry
+  // walks resolve fathers before descendants without risking call-stack overflow,
+  // while any path that reaches a paternal cycle remains unchanged.
   for (const person of ordered) migratePerson(person);
 
   rewriteRenamedResidents(state, originalNames);

@@ -305,6 +305,25 @@ describe('simulation smoke invariants', () => {
     expect(restored.familyNameVersion).toBe(1);
   });
 
+  it('normalizes a 12000-person paternal chain without call-stack overflow', () => {
+    const legacy = newState(8250);
+    delete legacy.familyNameVersion;
+    legacy.people = Array.from({ length: 12000 }, (_, index) => ({
+      id: index + 1,
+      name: '林岚',
+      gender: '男',
+      parents: index === 11999 ? [] : [index + 2],
+      hist: [],
+    }));
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+
+    expect(restored.people).toHaveLength(12000);
+    expect(restored.people[0].surname).toBe('林');
+    expect(restored.people[11999].surname).toBe('林');
+    expect(restored.familyNameVersion).toBe(1);
+  });
+
   it('allows inherited living names to reuse a deceased resident name', () => {
     const legacy = newState(8249);
     delete legacy.familyNameVersion;
