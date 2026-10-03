@@ -215,6 +215,45 @@ describe('simulation smoke invariants', () => {
     expect(restored.chron[0].t).toBe('许岚与叶岚舟一起玩耍。');
   });
 
+  it('ignores non-object legacy entries while rewriting migration text', () => {
+    const legacy = newState(8245);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '林春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶岚', gender: '女', parents: [2, 1], hist: [] },
+      'legacy-person-marker',
+    ];
+    legacy.alerts = [
+      'legacy-alert-marker',
+      { name: '叶岚', text: '叶岚需要帮助' },
+    ];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+
+    expect(restored.people[3]).toBe('legacy-person-marker');
+    expect(restored.alerts[0]).toBe('legacy-alert-marker');
+    expect(restored.alerts[1]).toEqual({ name: '许岚', text: '许岚需要帮助' });
+  });
+
+  it('leaves a legacy child unchanged when its father can no longer be resolved', () => {
+    const legacy = newState(8246);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 2, name: '林春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶岚', gender: '女', parents: [2, 999], hist: [{ d: 0, t: '叶岚出生' }] },
+    ];
+    legacy.chron = [{ d: 0, t: '叶岚出生了。', k: 'birth' }];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const child = restored.people.find(person => person.id === 3);
+
+    expect(child.name).toBe('叶岚');
+    expect(child.surname).toBe('叶');
+    expect(child.hist[0].t).toBe('叶岚出生');
+    expect(restored.chron[0].t).toBe('叶岚出生了。');
+  });
+
   it('does not downgrade or rewrite saves from a newer family-name version', () => {
     const future = newState(8241);
     future.familyNameVersion = 99;

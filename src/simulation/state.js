@@ -24,7 +24,7 @@ export function markStateDirty() {
 const FAMILY_NAME_VERSION = 1;
 
 function rewriteRenamedResidents(state, originalNames) {
-  const everyone = [...state.people, ...state.dead];
+  const everyone = [...state.people, ...state.dead].filter(person => person && typeof person === 'object');
   const residentsByOriginalName = new Map();
 
   for (const person of everyone) {
@@ -70,7 +70,7 @@ function rewriteRenamedResidents(state, originalNames) {
 
   for (const entry of state.chron) if (entry && typeof entry.t === 'string') entry.t = rewrite(entry.t);
   for (const alert of state.alerts) {
-    if (!alert) continue;
+    if (!alert || typeof alert !== 'object') continue;
     alert.name = rewrite(alert.name);
     alert.text = rewrite(alert.text);
   }
@@ -79,7 +79,7 @@ function rewriteRenamedResidents(state, originalNames) {
 }
 
 function repairLegacyFamilyNames(state) {
-  const everyone = [...state.people, ...state.dead];
+  const everyone = [...state.people, ...state.dead].filter(person => person && typeof person === 'object');
   const byId = new Map(everyone.map(person => [person.id, person]));
   const ordered = [...everyone].sort((a, b) => (a.id || 0) - (b.id || 0));
   const originalNames = new Map(everyone.map(person => [
@@ -111,7 +111,8 @@ function repairLegacyFamilyNames(state) {
   for (const person of ordered) {
     if (!Array.isArray(person.parents) || !person.parents.length) continue;
     const parents = person.parents.map(id => byId.get(id)).filter(Boolean);
-    const father = parents.find(parent => parent.gender === '男') || parents[0];
+    const father = parents.find(parent => parent.gender === '男');
+    if (!father) continue;
     const surname = personSurname(father);
     if (!surname) continue;
 
