@@ -65,6 +65,34 @@ describe('explainability', () => {
     expect(person).toEqual(beforePerson);
   });
 
+  it('keeps the displayed happiness driver consistent when the raw target exceeds the visible range', () => {
+    const result = happinessBreakdown({
+      state: { tax: 0, festival: 1, drought: 0, publicPerCap: 1 },
+      person: {
+        wealth: 255,
+        fed: 1,
+        health: 100,
+        partner: 1,
+        job: 'child',
+        traits: ['乐天'],
+        happiness: 80,
+      },
+      averageWealth: 255,
+      gini: 0,
+      seasonIndex: 0,
+      friendCount: 5,
+      marketCount: 2,
+      teahouseCount: 2,
+    });
+
+    expect(result.rawTarget).toBeGreaterThan(100);
+    expect(result.target).toBe(100);
+    expect(result.expectedChange).toBeCloseTo(
+      Math.min(100, 80 + (result.rawTarget - 80) * 0.07) - 80,
+      10,
+    );
+  });
+
   it('explains drought and policy effects on cohesion using the production formula', () => {
     const state = { cohesion: 50, policy: 'equal', drought: 5, festival: 10, publicPerCap: 0.5 };
     const before = structuredClone(state);

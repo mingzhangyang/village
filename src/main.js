@@ -756,7 +756,7 @@ function updateFate(){
       marketCount:BC(p.village,'market'),
       teahouseCount:BC(p.village,'teahouse')
     });
-    setT('fHappyTrend',`驱动目标 ${Math.round(happyWhy.target)} · 每日约 ${signed(happyWhy.expectedChange)}`);
+    setT('fHappyTrend',`驱动目标 ${Math.round(happyWhy.rawTarget)} · 每日约 ${signed(happyWhy.expectedChange)}`);
     setH('fHappyWhy',whyRows(happyWhy.factors));
   }else{
     setT('fHappyTrend',p.status==='dead'?'生命已结束，幸福不再变化':'已离开溪谷，幸福不再模拟');
