@@ -11,10 +11,14 @@ export function fallbackSurname(id) {
   return SURN[(numericId - 1) % SURN.length];
 }
 
-export function personSurname(person) {
+export function knownPersonSurname(person) {
   if (!person) return null;
   if (SURN.includes(person.surname)) return person.surname;
-  return surnameFromName(person.name) || fallbackSurname(person.id);
+  return surnameFromName(person.name);
+}
+
+export function personSurname(person) {
+  return knownPersonSurname(person) || fallbackSurname(person?.id);
 }
 
 export function givenNameFromDisplayName(name) {
@@ -44,8 +48,9 @@ export function migratedFamilyName(person, surname, usedNames = new Set()) {
   }
 
   const fallback = GIVEN[numericId % GIVEN.length];
+  const start = usedNames.size;
   for (let attempt = 0; attempt <= usedNames.size; attempt += 1) {
-    const suffix = `${fallback}${numericId.toString(36)}${attempt ? attempt.toString(36) : ''}`;
+    const suffix = `${fallback}${numericId.toString(36)}${(start + attempt).toString(36)}`;
     const candidate = buildCandidate(suffix);
     if (!usedNames.has(candidate)) return candidate;
   }

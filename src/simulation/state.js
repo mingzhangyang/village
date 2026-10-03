@@ -1,5 +1,5 @@
 import { createWorldSeed, normalizeSeed, seedFromLegacyState } from './rng.js';
-import { migratedFamilyName, personSurname } from './names.js';
+import { knownPersonSurname, migratedFamilyName } from './names.js';
 
 let activeState = null;
 let onDirty = () => {};
@@ -23,21 +23,74 @@ export function markStateDirty() {
 
 const FAMILY_NAME_VERSION = 1;
 
+const UNRESOLVED_FATHER = Symbol('unresolved-father');
+
+function distinctResidents(state) {
+  return [...new Set(
+    [...state.people, ...state.dead].filter(person => person && typeof person === 'object'),
+  )];
+}
+
+function residentGroupsById(residents) {
+  const groups = new Map();
+  for (const person of residents) {
+    if (!Number.isFinite(person.id)) continue;
+    const group = groups.get(person.id) || [];
+    group.push(person);
+    groups.set(person.id, group);
+  }
+  return groups;
+}
+
+function uniqueResidentsById(groupsById) {
+  const unique = new Map();
+  for (const [id, group] of groupsById) {
+    if (group.length === 1) unique.set(id, group[0]);
+  }
+  return unique;
+}
+
+function fatherFor(person, groupsById) {
+  if (!Array.isArray(person.parents)) return null;
+  let father = null;
+  const seenIds = new Set();
+
+  for (const id of person.parents) {
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
+    const group = groupsById.get(id) || [];
+
+    if (group.length > 1) {
+      if (group.some(candidate => candidate.gender === '男')) return UNRESOLVED_FATHER;
+      continue;
+    }
+
+    const candidate = group[0];
+    if (!candidate || candidate.gender !== '男') continue;
+    if (father && father !== candidate) return UNRESOLVED_FATHER;
+    father = candidate;
+  }
+
+  return father;
+}
+
 function rewriteRenamedResidents(state, originalNames) {
-  const everyone = [...state.people, ...state.dead].filter(person => person && typeof person === 'object');
+  const everyone = distinctResidents(state);
   const residentsByOriginalName = new Map();
-  const residentsById = new Map(everyone.map(person => [person.id, person]));
+  const groupsById = residentGroupsById(everyone);
+  const residentsById = uniqueResidentsById(groupsById);
+  let hasRename = false;
 
   for (const person of everyone) {
     const before = originalNames.get(person);
     if (!before) continue;
+    if (person.name !== before) hasRename = true;
     const residents = residentsByOriginalName.get(before) || [];
     residents.push(person);
     residentsByOriginalName.set(before, residents);
   }
 
-  const orderedNames = [...residentsByOriginalName.keys()].sort((a, b) => b.length - a.length);
-  if (!orderedNames.length) return;
+  if (!hasRename || !residentsByOriginalName.size) return;
 
   // Shared text can only be migrated safely when an old display name maps to one
   // resulting display name. If legacy residents reused a name and diverge after
@@ -48,34 +101,36 @@ function rewriteRenamedResidents(state, originalNames) {
     sharedReplacements.set(before, afterNames.size === 1 ? [...afterNames][0] : before);
   }
 
-  // Match every complete legacy resident name longest-first. This protects an
-  // unchanged longer name such as 林岚舟 when a shorter 林岚 is being renamed.
+  // Match complete legacy names longest-first in one regex pass. Proper escaping
+  // accepts imported metacharacters, and replacement text is never reprocessed.
+  const orderedNames = [...residentsByOriginalName.keys()].sort((left, right) => right.length - left.length);
   const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(orderedNames.map(escapeRegExp).join('|'), 'g');
-  const rewrite = (value, replacements = sharedReplacements) => typeof value === 'string'
-    ? value.replace(pattern, match => replacements.get(match) ?? match)
+  const rewrite = (value, overrides = null) => typeof value === 'string'
+    ? value.replace(pattern, match => {
+      if (overrides && overrides.has(match)) return overrides.get(match);
+      return sharedReplacements.get(match) ?? match;
+    })
     : value;
-  const replacementsForResidents = residents => {
-    if (!residents.length) return sharedReplacements;
-    const replacements = new Map(sharedReplacements);
-    const specific = new Map();
+
+  // Keep resident-specific overrides small instead of cloning the entire shared
+  // replacement table for every resident in a large imported save.
+  const overridesForResidents = residents => {
+    const overrides = new Map();
     for (const resident of residents) {
       const before = originalNames.get(resident);
       if (!before || resident.name === before) continue;
-      const previous = specific.get(before);
-      specific.set(before, previous && previous !== resident.name ? before : resident.name);
+      const previous = overrides.get(before);
+      overrides.set(before, previous && previous !== resident.name ? before : resident.name);
     }
-    for (const [before, after] of specific) replacements.set(before, after);
-    return replacements;
+    return overrides;
   };
 
   for (const person of everyone) {
     if (!Array.isArray(person.hist)) continue;
-    // A resident's own history treats its old display name as a self-reference,
-    // even when another legacy resident reused the same display name.
-    const replacements = replacementsForResidents([person]);
+    const overrides = overridesForResidents([person]);
     for (const entry of person.hist) {
-      if (entry && typeof entry.t === 'string') entry.t = rewrite(entry.t, replacements);
+      if (entry && typeof entry.t === 'string') entry.t = rewrite(entry.t, overrides);
     }
   }
 
@@ -83,123 +138,148 @@ function rewriteRenamedResidents(state, originalNames) {
   for (const alert of state.alerts) {
     if (!alert || typeof alert !== 'object') continue;
     const resident = residentsById.get(alert.id);
-    const replacements = resident ? replacementsForResidents([resident]) : sharedReplacements;
-    alert.name = rewrite(alert.name, replacements);
-    alert.text = rewrite(alert.text, replacements);
+    const overrides = resident ? overridesForResidents([resident]) : null;
+    alert.name = rewrite(alert.name, overrides);
+    alert.text = rewrite(alert.text, overrides);
   }
+
   if (state.pending && typeof state.pending === 'object') {
     const data = state.pending.d && typeof state.pending.d === 'object' ? state.pending.d : {};
     const referencedIds = [data.p, data.a, data.b, ...(Array.isArray(data.ids) ? data.ids : [])];
     const referencedResidents = referencedIds
       .map(id => residentsById.get(id))
       .filter(Boolean);
-    state.pending.res = rewrite(state.pending.res, replacementsForResidents(referencedResidents));
+    state.pending.res = rewrite(state.pending.res, overridesForResidents(referencedResidents));
   }
+
+  if (state.ch && typeof state.ch === 'object') {
+    state.ch.txt = rewrite(state.ch.txt);
+    if (state.ch.result && typeof state.ch.result === 'object') {
+      state.ch.result.why = rewrite(state.ch.result.why);
+    }
+  }
+
   state.lastHunger = rewrite(state.lastHunger);
   state.lastLeft = rewrite(state.lastLeft);
 }
 
 function repairLegacyFamilyNames(state) {
-  const everyone = [...state.people, ...state.dead].filter(person => person && typeof person === 'object');
-  const byId = new Map(everyone.map(person => [person.id, person]));
-  const ordered = [...everyone].sort((a, b) => (a.id || 0) - (b.id || 0));
+  const everyone = distinctResidents(state);
+  const groupsById = residentGroupsById(everyone);
+  const indexed = everyone.map((person, index) => ({ person, index }));
+  indexed.sort((left, right) => {
+    const leftId = Number.isFinite(left.person.id) ? left.person.id : Number.POSITIVE_INFINITY;
+    const rightId = Number.isFinite(right.person.id) ? right.person.id : Number.POSITIVE_INFINITY;
+    if (leftId !== rightId) return leftId < rightId ? -1 : 1;
+    return left.index - right.index;
+  });
+  const ordered = indexed.map(entry => entry.person);
   const originalNames = new Map(everyone.map(person => [
     person,
-    typeof person.name === 'string' && person.name ? person.name : null,
+    typeof person.name === 'string' ? person.name : null,
   ]));
-  const livingResidents = state.people.filter(person => person && typeof person === 'object');
-  const livingSet = new Set(livingResidents);
-  const nameCounts = new Map();
-  for (const person of livingResidents) {
-    const name = originalNames.get(person);
-    if (name) nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
-  }
-  const usedNames = new Set(nameCounts.keys());
-  const releaseName = name => {
-    if (!name) return;
-    const remaining = (nameCounts.get(name) || 0) - 1;
-    if (remaining > 0) nameCounts.set(name, remaining);
-    else {
-      nameCounts.delete(name);
-      usedNames.delete(name);
-    }
-  };
-  const reserveName = name => {
-    if (!name) return;
-    nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
-    usedNames.add(name);
-  };
-
-  for (const person of ordered) person.surname = personSurname(person);
-
-  const fatherByPerson = new Map();
-  for (const person of ordered) {
-    const parents = Array.isArray(person.parents)
-      ? person.parents.map(id => byId.get(id)).filter(Boolean)
-      : [];
-    fatherByPerson.set(person, parents.find(parent => parent.gender === '男') || null);
-  }
-
+  const initialSurnames = new Map(everyone.map(person => [person, knownPersonSurname(person)]));
+  const fatherByPerson = new Map(ordered.map(person => [person, fatherFor(person, groupsById)]));
+  const finalSurnames = new Map();
   const ancestryResolved = new Map();
-  const applyFatherSurname = person => {
-    const father = fatherByPerson.get(person);
-    if (!father) return;
 
-    const surname = personSurname(father);
-    if (!surname) return;
-
-    person.surname = surname;
-    if (typeof person.name === 'string' && person.name.startsWith(surname)) return;
-
-    const oldName = person.name;
-    const isLiving = livingSet.has(person);
-    if (isLiving) releaseName(oldName);
-    const nextName = migratedFamilyName(person, surname, isLiving ? usedNames : new Set());
-    person.name = nextName;
-    if (isLiving) reserveName(nextName);
-  };
-
-  const migratePerson = start => {
-    if (ancestryResolved.has(start)) return ancestryResolved.get(start) !== false;
+  const resolveAncestry = startPerson => {
+    if (ancestryResolved.has(startPerson)) return ancestryResolved.get(startPerson) !== false;
 
     const path = [];
     const pathSet = new Set();
-    let current = start;
+    let current = startPerson;
+    let blocked = false;
 
     while (current && !ancestryResolved.has(current) && !pathSet.has(current)) {
       path.push(current);
       pathSet.add(current);
-      current = fatherByPerson.get(current) || null;
+      const father = fatherByPerson.get(current);
+      if (father === UNRESOLVED_FATHER) {
+        blocked = true;
+        current = null;
+        break;
+      }
+      current = father;
     }
 
     const hitCycle = !!current && pathSet.has(current);
-    const upstreamResolved = current && ancestryResolved.has(current)
-      ? ancestryResolved.get(current) !== false
-      : !hitCycle;
+    const upstreamResolved = !blocked
+      && !hitCycle
+      && (!current || ancestryResolved.get(current) !== false);
 
     if (!upstreamResolved) {
-      for (const person of path) ancestryResolved.set(person, false);
+      for (const person of path) {
+        ancestryResolved.set(person, false);
+        finalSurnames.set(person, initialSurnames.get(person));
+      }
       return false;
     }
 
     for (let index = path.length - 1; index >= 0; index -= 1) {
       const person = path[index];
       const father = fatherByPerson.get(person);
-      const resolved = father
-        ? father !== person && ancestryResolved.get(father) !== false
-        : true;
-      if (father && resolved) applyFatherSurname(person);
-      ancestryResolved.set(person, resolved);
+      if (!father) {
+        ancestryResolved.set(person, true);
+        finalSurnames.set(person, initialSurnames.get(person));
+        continue;
+      }
+
+      const fatherResolved = ancestryResolved.get(father) !== false;
+      if (!fatherResolved) {
+        ancestryResolved.set(person, false);
+        finalSurnames.set(person, initialSurnames.get(person));
+        continue;
+      }
+
+      ancestryResolved.set(person, true);
+      finalSurnames.set(person, finalSurnames.get(father) || initialSurnames.get(father));
     }
 
-    return ancestryResolved.get(start) !== false;
+    return ancestryResolved.get(startPerson) !== false;
   };
 
-  // Imported saves do not require IDs to follow ancestry order. Starting from a
-  // stable ID order keeps collision handling deterministic. Iterative ancestry
-  // walks resolve fathers before descendants without risking call-stack overflow,
-  // while any path that reaches a paternal cycle remains unchanged.
-  for (const person of ordered) migratePerson(person);
+  // First resolve the complete paternal graph without changing display names.
+  // This makes ID ordering irrelevant and lets collision handling see final names.
+  for (const person of ordered) resolveAncestry(person);
+  for (const person of ordered) {
+    person.surname = finalSurnames.get(person) || initialSurnames.get(person);
+  }
+
+  const livingResidents = [...new Set(state.people.filter(person => person && typeof person === 'object'))];
+  const livingSet = new Set(livingResidents);
+  const renamePlans = ordered.filter(person => {
+    const father = fatherByPerson.get(person);
+    const surname = finalSurnames.get(person);
+    return ancestryResolved.get(person) === true
+      && father
+      && father !== UNRESOLVED_FATHER
+      && surname
+      && !(typeof person.name === 'string' && person.name.startsWith(surname));
+  });
+
+  // Release every living name that is known to be vacated before assigning any
+  // replacement. Unchanged residents remain reserved, including duplicate names.
+  const nameCounts = new Map();
+  for (const person of livingResidents) {
+    if (typeof person.name !== 'string') continue;
+    nameCounts.set(person.name, (nameCounts.get(person.name) || 0) + 1);
+  }
+  for (const person of renamePlans) {
+    if (!livingSet.has(person) || typeof person.name !== 'string') continue;
+    const remaining = (nameCounts.get(person.name) || 0) - 1;
+    if (remaining > 0) nameCounts.set(person.name, remaining);
+    else nameCounts.delete(person.name);
+  }
+
+  const usedNames = new Set(nameCounts.keys());
+  for (const person of renamePlans) {
+    const surname = finalSurnames.get(person);
+    const isLiving = livingSet.has(person);
+    const nextName = migratedFamilyName(person, surname, isLiving ? usedNames : new Set());
+    person.name = nextName;
+    if (isLiving) usedNames.add(nextName);
+  }
 
   rewriteRenamedResidents(state, originalNames);
   state.familyNameVersion = FAMILY_NAME_VERSION;
@@ -225,6 +305,6 @@ export function normalizeState(raw){
   state.hist=Object.assign({},base.hist,o.hist||{});
   for(const k of ['pop','food','wealth','happy','coh'])if(!Array.isArray(state.hist[k]))state.hist[k]=[];
   for(const k of ['people','dead','built','watch','alerts','chron'])if(!Array.isArray(state[k]))state[k]=[];
-  if(!Number.isFinite(o.familyNameVersion)||o.familyNameVersion<FAMILY_NAME_VERSION)repairLegacyFamilyNames(state);
+  if(o.familyNameVersion==null||(Number.isFinite(o.familyNameVersion)&&o.familyNameVersion<FAMILY_NAME_VERSION))repairLegacyFamilyNames(state);
   return state;
 }

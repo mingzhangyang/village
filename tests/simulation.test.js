@@ -148,12 +148,68 @@ describe('simulation smoke invariants', () => {
     const firstChild = restored.people.find(person => person.id === 3);
     const secondChild = restored.people.find(person => person.id === 6);
 
-    expect(firstChild.name.startsWith('许')).toBe(true);
-    expect(secondChild.name.startsWith('林')).toBe(true);
-    expect(firstChild.hist[0].t).toContain(firstChild.name);
-    expect(secondChild.hist[0].t).toContain(secondChild.name);
-    expect(restored.chron[0].t).toContain(firstChild.name);
-    expect(restored.chron[0].t).toContain(secondChild.name);
+    expect(firstChild.name).toBe('许岚');
+    expect(secondChild.name).toBe('林岚');
+    expect(firstChild.hist[0].t).toBe('许岚出生');
+    expect(secondChild.hist[0].t).toBe('林岚出生');
+    expect(restored.chron[0].t).toBe('许岚与林岚一起玩耍。');
+  });
+
+  it('keeps genuine final-name collisions unique after releasing all vacated names', () => {
+    const legacy = newState(8251);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '周春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '林岚', gender: '女', parents: [2, 1], hist: [] },
+      { id: 4, name: '许松', gender: '男', parents: [], hist: [] },
+      { id: 5, name: '周秋', gender: '女', parents: [], hist: [] },
+      { id: 6, name: '叶岚', gender: '男', parents: [5, 4], hist: [] },
+    ];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const firstChild = restored.people.find(person => person.id === 3);
+    const secondChild = restored.people.find(person => person.id === 6);
+    const livingNames = restored.people.map(person => person.name);
+
+    expect(firstChild.name).toBe('许岚');
+    expect(secondChild.name.startsWith('许')).toBe(true);
+    expect(secondChild.name).not.toBe(firstChild.name);
+    expect(new Set(livingNames).size).toBe(livingNames.length);
+  });
+
+  it('leaves ancestry unchanged when imported parent ids are ambiguous', () => {
+    const legacy = newState(8252);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 1, name: '林松', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '周春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶岚', gender: '女', parents: [2, 1], hist: [] },
+    ];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const child = restored.people.find(person => person.id === 3);
+
+    expect(child.name).toBe('叶岚');
+    expect(child.surname).toBe('叶');
+  });
+
+  it('leaves ancestry unchanged when more than one father is referenced', () => {
+    const legacy = newState(8253);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '林松', gender: '男', parents: [], hist: [] },
+      { id: 3, name: '周春', gender: '女', parents: [], hist: [] },
+      { id: 4, name: '叶岚', gender: '女', parents: [3, 1, 2], hist: [] },
+    ];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const child = restored.people.find(person => person.id === 4);
+
+    expect(child.name).toBe('叶岚');
+    expect(child.surname).toBe('叶');
   });
 
   it('escapes regex metacharacters in imported legacy names', () => {
@@ -266,6 +322,24 @@ describe('simulation smoke invariants', () => {
     expect(restored.chron[0].t).toBe('叶岚出生了。');
   });
 
+  it('does not invent a legacy paternal surname when the father name has no recoverable surname', () => {
+    const legacy = newState(8258);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '阿松', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '周春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶岚', gender: '女', parents: [2, 1], hist: [{ d: 0, t: '叶岚出生' }] },
+    ];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const child = restored.people.find(person => person.id === 3);
+
+    expect(restored.people.find(person => person.id === 1).surname).toBeNull();
+    expect(child.name).toBe('叶岚');
+    expect(child.surname).toBe('叶');
+    expect(child.hist[0].t).toBe('叶岚出生');
+  });
+
   it('resolves paternal ancestors before descendants when imported ids are out of order', () => {
     const legacy = newState(8247);
     delete legacy.familyNameVersion;
@@ -343,6 +417,74 @@ describe('simulation smoke invariants', () => {
     expect(child.surname).toBe('许');
     expect(child.hist[0].t).toBe('许岚出生');
     expect(restored.dead.find(person => person.id === 4).name).toBe('许岚');
+  });
+
+  it('rewrites persisted challenge result text that contains a migrated resident name', () => {
+    const legacy = newState(8254);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '周春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶岚', gender: '女', parents: [2, 1], hist: [] },
+    ];
+    legacy.lastLeft = '叶岚';
+    legacy.ch = {
+      id: 'stay',
+      txt: '叶岚仍在挑战记录里。',
+      result: { win: false, why: '叶岚离开了溪谷。' },
+    };
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+
+    expect(restored.lastLeft).toBe('许岚');
+    expect(restored.ch.txt).toBe('许岚仍在挑战记录里。');
+    expect(restored.ch.result.why).toBe('许岚离开了溪谷。');
+  });
+
+  it('does not consume simulation RNG while migrating legacy family names', () => {
+    const legacy = newState(8255);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '周春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶岚', gender: '女', parents: [2, 1], hist: [] },
+    ];
+    const before = legacy.rngState;
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+
+    expect(restored.rngState).toBe(before);
+  });
+
+  it('is idempotent after the family-name migration version is recorded', () => {
+    const legacy = newState(8256);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '周春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶岚', gender: '女', parents: [2, 1], hist: [{ d: 0, t: '叶岚出生' }] },
+    ];
+
+    const once = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const snapshot = JSON.parse(JSON.stringify(once));
+    const twice = normalizeState(JSON.parse(JSON.stringify(snapshot)));
+
+    expect(twice).toEqual(snapshot);
+  });
+
+  it('does not rewrite saves with an unknown family-name version marker', () => {
+    const future = newState(8257);
+    future.familyNameVersion = 'future-format';
+    future.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '周春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶岚', gender: '女', parents: [2, 1], hist: [] },
+    ];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(future)));
+
+    expect(restored.familyNameVersion).toBe('future-format');
+    expect(restored.people.find(person => person.id === 3).name).toBe('叶岚');
   });
 
   it('does not downgrade or rewrite saves from a newer family-name version', () => {
