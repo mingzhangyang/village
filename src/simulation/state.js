@@ -101,18 +101,28 @@ function rewriteRenamedResidents(state, originalNames) {
     sharedReplacements.set(before, afterNames.size === 1 ? [...afterNames][0] : before);
   }
 
-  // Match complete legacy names longest-first in one regex pass. Proper escaping
-  // accepts imported metacharacters, and replacement text is never reprocessed.
-  const orderedNames = [...residentsByOriginalName.keys()].sort((left, right) => right.length - left.length);
-  const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(orderedNames.map(escapeRegExp).join('|'), 'g');
-  const rewrite = (value, overrides = null) => typeof value === 'string'
-    ? value.replace(pattern, match => {
-      if (overrides && overrides.has(match)) return overrides.get(match);
-      return sharedReplacements.get(match) ?? match;
-    })
+  const replacementFor = (name, overrides = null) => {
+    if (overrides && overrides.has(name)) return overrides.get(name);
+    return sharedReplacements.get(name) ?? name;
+  };
+  const rewriteExactName = (value, overrides = null) => typeof value === 'string'
+    ? replacementFor(value, overrides)
     : value;
 
+  // One-character imported names cannot be distinguished safely from ordinary
+  // Chinese prose (for example, resident "叶" versus "树叶落下"). Keep those
+  // replacements for structured exact-name fields only; free text migrates only
+  // names with at least two Unicode code points.
+  const freeTextNames = [...residentsByOriginalName.keys()]
+    .filter(name => Array.from(name).length >= 2)
+    .sort((left, right) => right.length - left.length);
+  const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = freeTextNames.length
+    ? new RegExp(freeTextNames.map(escapeRegExp).join('|'), 'g')
+    : null;
+  const rewriteFreeText = (value, overrides = null) => typeof value === 'string' && pattern
+    ? value.replace(pattern, match => replacementFor(match, overrides))
+    : value;
   // Keep resident-specific overrides small instead of cloning the entire shared
   // replacement table for every resident in a large imported save.
   const overridesForResidents = residents => {
@@ -130,17 +140,17 @@ function rewriteRenamedResidents(state, originalNames) {
     if (!Array.isArray(person.hist)) continue;
     const overrides = overridesForResidents([person]);
     for (const entry of person.hist) {
-      if (entry && typeof entry.t === 'string') entry.t = rewrite(entry.t, overrides);
+      if (entry && typeof entry.t === 'string') entry.t = rewriteFreeText(entry.t, overrides);
     }
   }
 
-  for (const entry of state.chron) if (entry && typeof entry.t === 'string') entry.t = rewrite(entry.t);
+  for (const entry of state.chron) if (entry && typeof entry.t === 'string') entry.t = rewriteFreeText(entry.t);
   for (const alert of state.alerts) {
     if (!alert || typeof alert !== 'object') continue;
     const resident = residentsById.get(alert.id);
     const overrides = resident ? overridesForResidents([resident]) : null;
-    alert.name = rewrite(alert.name, overrides);
-    alert.text = rewrite(alert.text, overrides);
+    alert.name = rewriteExactName(alert.name, overrides);
+    alert.text = rewriteFreeText(alert.text, overrides);
   }
 
   if (state.pending && typeof state.pending === 'object') {
@@ -149,18 +159,18 @@ function rewriteRenamedResidents(state, originalNames) {
     const referencedResidents = referencedIds
       .map(id => residentsById.get(id))
       .filter(Boolean);
-    state.pending.res = rewrite(state.pending.res, overridesForResidents(referencedResidents));
+    state.pending.res = rewriteFreeText(state.pending.res, overridesForResidents(referencedResidents));
   }
 
   if (state.ch && typeof state.ch === 'object') {
-    state.ch.txt = rewrite(state.ch.txt);
+    state.ch.txt = rewriteFreeText(state.ch.txt);
     if (state.ch.result && typeof state.ch.result === 'object') {
-      state.ch.result.why = rewrite(state.ch.result.why);
+      state.ch.result.why = rewriteFreeText(state.ch.result.why);
     }
   }
 
-  state.lastHunger = rewrite(state.lastHunger);
-  state.lastLeft = rewrite(state.lastLeft);
+  state.lastHunger = rewriteExactName(state.lastHunger);
+  state.lastLeft = rewriteExactName(state.lastLeft);
 }
 
 function repairLegacyFamilyNames(state) {

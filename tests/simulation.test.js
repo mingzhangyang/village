@@ -131,6 +131,27 @@ describe('simulation smoke invariants', () => {
     expect(restored.familyNameVersion).toBe(1);
   });
 
+  it('keeps one-character legacy names out of unrelated free-text substitutions', () => {
+    const legacy = newState(8259);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '周春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶', gender: '女', parents: [2, 1], hist: [{ d: 0, t: '树叶落下' }] },
+    ];
+    legacy.chron = [{ d: 0, t: '树叶落下，叶站在树下。', k: 'info' }];
+    legacy.alerts = [{ id: 3, name: '叶', text: '树叶落下' }];
+    legacy.lastLeft = '叶';
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const child = restored.people.find(person => person.id === 3);
+
+    expect(child.name).toBe('许松');
+    expect(child.hist[0].t).toBe('树叶落下');
+    expect(restored.chron[0].t).toBe('树叶落下，叶站在树下。');
+    expect(restored.alerts[0]).toEqual({ id: 3, name: '许松', text: '树叶落下' });
+    expect(restored.lastLeft).toBe('许松');
+  });
   it('rewrites renamed residents in one pass without cascading substitutions', () => {
     const legacy = newState(8240);
     delete legacy.familyNameVersion;

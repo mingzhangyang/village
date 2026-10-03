@@ -99,6 +99,23 @@ describe('population', () => {
     }
   });
 
+  it('keeps collision suffixes unique for finite ids beyond the safe-integer range', () => {
+    const person = {
+      id: 1e308,
+      name: `林${'岚'.repeat(MAX_PERSON_NAME_LENGTH - 1)}`,
+    };
+    const used = new Set();
+
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const name = migratedFamilyName(person, '许', used);
+      expect(name.length).toBeLessThanOrEqual(MAX_PERSON_NAME_LENGTH);
+      expect(name.startsWith('许')).toBe(true);
+      expect(used.has(name)).toBe(false);
+      used.add(name);
+    }
+
+    expect(used.size).toBe(80);
+  });
   it('does not infer a future child surname from an unknown legacy father id', () => {
     const legacy = newState(9007);
     delete legacy.familyNameVersion;
