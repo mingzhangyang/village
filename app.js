@@ -9,7 +9,9 @@ const has=(p,t)=>p.traits.indexOf(t)>=0;
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 
 const YEAR=40,SEASON=10,SEASONS=['春','夏','秋','冬'];
-const SAVE='hejing-save-v1';
+const Storage=window.HejingStorage;
+if(!Storage)throw new Error('Save System v2 failed to load.');
+const WINS='hejing-wins-v1',LEGACY_WINS='hejing-wins';
 const JOBS={
   farmer:{n:'农夫',c:'#c99a2e'},
   fisher:{n:'渔民',c:'#3f86ad'},
@@ -89,7 +91,13 @@ const MAP=(function(){
 
 /* ---------------- 状态 ---------------- */
 let S;
-function saveNow(){if(!S)return;try{localStorage.setItem(SAVE,JSON.stringify(S));}catch(err){}}
+function saveNow(){
+  if(!S)return;
+  try{
+    const c=S.ch&&CHALLENGES[S.ch.id];
+    Storage.saveActive(S,{challengeName:c?c.n:'挑战'});
+  }catch(err){console.warn('Save failed',err);}
+}
 function newState(){
   return {v:1,day:0,food:388,treasury:60,people:[],dead:[],nextId:1,tax:0.15,policy:'need',
     drought:0,plague:0,plagueId:0,festival:0,caravan:0,mine:false,canal:false,cd:{},
@@ -809,25 +817,56 @@ const CHALLENGES={
       if(el>=320)return Math.round(S.cohesion)>=50?{st:'win',why:`八年里没有一个人离开，凝聚力达到 ${Math.round(S.cohesion)}。`}:{st:'lose',why:`八年里没人离开，但凝聚力只有 ${Math.round(S.cohesion)}，不到 50。`};
       return {st:'run',txt:`还剩 ${Math.ceil((320-el)/YEAR)} 年。离开 0 人，凝聚力 ${Math.round(S.cohesion)}（到期时要到 50）。`,pct:el/320};}}
 };
-function wins(){try{return JSON.parse(localStorage.getItem('hejing-wins')||'{}');}catch(e){return {};}}
+function wins(){
+  try{
+    let raw=localStorage.getItem(WINS);
+    if(!raw){
+      raw=localStorage.getItem(LEGACY_WINS);
+      if(raw)localStorage.setItem(WINS,raw);
+    }
+    return JSON.parse(raw||'{}');
+  }catch(e){return {};}
+}
 function checkChallenge(){
   const c=S.ch,C=CHALLENGES[c.id];if(!C)return;
   const r=C.check(c,S.day-c.start);c.txt=r.txt||'';c.pct=r.pct||0;
   if(r.st==='run')return;
   c.result={win:r.st==='win',why:r.why};S.paused=true;
   chron(r.st==='win'?`挑战成功：${C.n}。${r.why}`:`挑战失败：${C.n}。${r.why}`,'event');
-  if(r.st==='win'){try{const w=wins();w[c.id]=1;localStorage.setItem('hejing-wins',JSON.stringify(w));}catch(e){}}
+  if(r.st==='win'){try{const w=wins();w[c.id]=1;localStorage.setItem(WINS,JSON.stringify(w));}catch(e){}}
   dirty=true;
 }
 function startChallenge(id){
   const C=CHALLENGES[id];if(!C)return;
-  if(!window.confirm(`开始“${C.n}”会重新生成一个新的溪谷，并覆盖当前进度。确定开始吗？`))return;
-  try{localStorage.removeItem(SAVE);}catch(err){}
-  init(true);
+  if(!window.confirm(`开始“${C.n}”吗？当前自由世界会先保存，挑战使用独立存档，结束后可以原样返回。`))return;
+  saveNow();
+  installState(null,true);
   S.ch={id,start:S.day,hd0:S.hungerDeaths,left0:S.left,hold:0,result:null,txt:'',pct:0};
   if(C.setup)C.setup();
   chron(`挑战开始：${C.n}。${C.d}`,'event');
+  Storage.startChallenge(S,C.n);
   checkChallenge();closeModal();syncControls();dirty=true;updateUI();saveNow();
+}
+function returnToFreeWorld(){
+  saveNow();
+  const old=S.ch&&CHALLENGES[S.ch.id];
+  const session=Storage.returnToOrigin();
+  if(session&&session.state){
+    installState(session.state,false);closeModal();toast(old?`已结束“${old.n}”，回到原来的自由世界`:'已回到自由世界');return true;
+  }
+  installState(null,true);
+  Storage.createSlot('溪谷 1',S,true);saveNow();closeModal();toast('已创建新的自由世界');return true;
+}
+function keepChallengeWorld(){
+  const C=S.ch&&CHALLENGES[S.ch.id];if(!C)return;
+  const name=window.prompt('给这个自由世界起个名字：',`${C.n}之后`);
+  if(name===null)return;
+  try{
+    const session=Storage.promoteChallenge(S,name);
+    installState(session.state,false);closeModal();toast('挑战世界已另存为自由存档');
+  }catch(err){
+    window.alert(err.code==='SLOTS_FULL'?'自由存档槽已满，请先在“存档”里删除一个旧世界。':err.message);
+  }
 }
 let mdlMode='',mdlReturnFocus=null;
 function openModal(mode){
@@ -835,32 +874,32 @@ function openModal(mode){
   mdlMode=mode;const w=wins();
   if(mode==='list'){
     $('mdlK').textContent='选一个剧本';$('mdlK').style.color='';$('mdlT').textContent='挑战';
-    $('mdlX').textContent='每个挑战都有一个目标和期限。开始挑战会重新生成一个新的溪谷。';
+    $('mdlX').textContent='每个挑战都有一个目标和期限。挑战使用独立存档，不会覆盖你的自由世界。';
     $('mdlO').innerHTML=Object.entries(CHALLENGES).map(([k,C])=>`<button class="opt${w[k]?' done':''}" data-ch="${k}"><b>${C.n}</b><span>${C.d}</span></button>`).join('')
-      +`<button class="opt free" data-ch=""><b>${S.ch?'放弃挑战，继续这个世界':'自由模式'}</b><span>没有目标，随你怎么玩。</span></button>`;
+      +`<button class="opt free" data-act="${S.ch?'return':'close'}"><b>${S.ch?'结束挑战，回到原来的世界':'继续自由模式'}</b><span>${S.ch?'原来的自由世界仍保留在开始挑战前的状态。':'关闭这个窗口，继续当前世界。'}</span></button>`;
   }else{
     const c=S.ch,C=CHALLENGES[c.id];
     $('mdlK').textContent=c.result.win?'挑战成功':'挑战失败';$('mdlK').style.color=c.result.win?'var(--accent)':'';$('mdlT').textContent=C.n;$('mdlX').textContent=c.result.why;
-    $('mdlO').innerHTML=`<button class="opt" data-ch="${c.id}"><b>再试一次</b><span>从头开始这个挑战。</span></button><button class="opt" data-act="list"><b>换个挑战</b></button><button class="opt free" data-ch=""><b>留在这个世界继续玩</b><span>挑战结束，世界照常运转。</span></button>`;
+    $('mdlO').innerHTML=`<button class="opt" data-ch="${c.id}"><b>再试一次</b><span>从头开始这个挑战。</span></button><button class="opt" data-act="list"><b>换个挑战</b></button><button class="opt" data-act="return"><b>回到原来的世界</b><span>挑战前的自由世界没有被覆盖。</span></button><button class="opt free" data-act="keep"><b>把这个挑战世界另存为自由存档</b><span>保留这里发生的一切，然后继续玩。</span></button>`;
   }
   $('mdl').hidden=false;document.querySelector('#mdl .dlg').focus({preventScroll:true});
 }
-function mdlHidden(){return $('mdl').hidden;}
+function mdlHidden(){return $('mdl').hidden&&$('saveMdl').hidden;}
 function closeModal(){
   $('mdl').hidden=true;mdlMode='';
   const el=mdlReturnFocus;mdlReturnFocus=null;
   if(el&&typeof el.focus==='function')el.focus({preventScroll:true});
 }
 $('chBtn').addEventListener('click',()=>openModal('list'));
-$('gQuit').addEventListener('click',()=>{if(S.ch){chron(`放弃了挑战：${CHALLENGES[S.ch.id].n}。`,'info');S.ch=null;dirty=true;updateUI();}});
+$('gQuit').addEventListener('click',()=>{if(S.ch&&window.confirm('结束当前挑战并回到挑战前的自由世界吗？'))returnToFreeWorld();});
 $('mdl').addEventListener('click',e=>{
   if(e.target.id==='mdl'&&mdlMode==='list'){closeModal();return;}
   const b=e.target.closest('button');if(!b)return;
   if(b.dataset.act==='list'){openModal('list');return;}
-  if(b.dataset.ch===undefined)return;
-  if(b.dataset.ch){startChallenge(b.dataset.ch);return;}
-  if(S.ch){if(!S.ch.result)chron(`放弃了挑战：${CHALLENGES[S.ch.id].n}。`,'info');S.ch=null;S.paused=false;}
-  closeModal();dirty=true;updateUI();
+  if(b.dataset.act==='return'){returnToFreeWorld();return;}
+  if(b.dataset.act==='keep'){keepChallengeWorld();return;}
+  if(b.dataset.act==='close'){closeModal();return;}
+  if(b.dataset.ch!==undefined&&b.dataset.ch){startChallenge(b.dataset.ch);return;}
 });
 function trapDialogFocus(e,box){
   if(e.key!=='Tab'||box.hidden)return;
@@ -873,8 +912,9 @@ function trapDialogFocus(e,box){
   else if(!e.shiftKey&&active===last){e.preventDefault();first.focus();}
 }
 document.addEventListener('keydown',e=>{
-  const active=!$('dlg').hidden?$('dlg'):!$('mdl').hidden?$('mdl'):null;
+  const active=!$('dlg').hidden?$('dlg'):!$('saveMdl').hidden?$('saveMdl'):!$('mdl').hidden?$('mdl'):null;
   if(active)trapDialogFocus(e,active);
+  if(e.key==='Escape'&&!$('saveMdl').hidden){closeSaveManager();return;}
   if(e.key==='Escape'&&mdlMode==='list'&&!$('mdl').hidden)closeModal();
 });
 function renderGoal(){
@@ -1192,6 +1232,70 @@ function syncControls(){
   document.querySelectorAll('#speed button').forEach(b=>b.classList.toggle('on',+b.dataset.s===S.speed));
 }
 
+/* ---------------- 存档管理 ---------------- */
+let saveReturnFocus=null;
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function saveTime(v){if(!v)return '未知时间';try{return new Date(v).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});}catch(err){return String(v);}}
+function safeFileName(name){return String(name||'hejing').replace(/[\\/:*?"<>|]/g,'-').slice(0,40)||'hejing';}
+function downloadJson(text,name){
+  const blob=new Blob([text],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=safeFileName(name)+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
+}
+function renderSaveManager(){
+  const info=Storage.getActiveInfo(),slots=Storage.listSlots();
+  $('saveStatus').textContent=info.kind==='challenge'
+    ?`当前：独立挑战存档“${info.name}”。挑战前的自由世界仍安全保留。`
+    :info.id?`当前自由世界：${info.name}。自动保存已开启。`:'还没有自由世界存档。';
+  $('saveSlots').innerHTML=slots.length?slots.map(s=>{
+    const active=info.kind==='slot'&&info.id===s.id,cls=`save-slot${active?' active':''}${s.broken?' broken':''}`;
+    const meta=s.broken?'存档数据损坏，无法加载':`第 ${Math.floor((s.day||0)/YEAR)+1} 年 · ${s.population||0} 人 · ${saveTime(s.updatedAt)}`;
+    return `<div class="${cls}" data-slot="${s.id}"><div class="save-slot-main"><b>${esc(s.name)}${active?'<span class="save-current">当前</span>':''}</b><span>${esc(meta)}</span></div><div class="save-slot-actions"><button class="btn" data-save-act="load" data-id="${s.id}"${active||s.broken?' disabled':''}>加载</button><button class="btn" data-save-act="rename" data-id="${s.id}"${s.broken?' disabled':''}>重命名</button><button class="btn" data-save-act="export" data-id="${s.id}"${s.broken?' disabled':''}>导出</button><button class="btn" data-save-act="delete" data-id="${s.id}"${active?' disabled':''}>删除</button></div></div>`;
+  }).join(''):'<div class="empty">还没有自由世界存档。</div>';
+}
+function openSaveManager(){
+  saveNow();saveReturnFocus=document.activeElement;renderSaveManager();$('saveMdl').hidden=false;$('saveMdl').querySelector('.dlg').focus({preventScroll:true});
+}
+function closeSaveManager(){
+  $('saveMdl').hidden=true;const el=saveReturnFocus;saveReturnFocus=null;if(el&&typeof el.focus==='function')el.focus({preventScroll:true});
+}
+function loadFreeSlot(id,fromImport){
+  const info=Storage.getActiveInfo();
+  if(info.kind==='challenge'&&!window.confirm('加载自由世界会结束当前挑战。继续吗？'))return;
+  saveNow();
+  if(info.kind==='challenge')Storage.discardChallenge();
+  const env=Storage.loadSlot(id,true);installState(env.state,false);closeSaveManager();toast(fromImport?'已导入并加载存档':'已加载存档');
+}
+$('saveBtn').addEventListener('click',openSaveManager);
+$('saveMdl').addEventListener('click',e=>{
+  if(e.target.id==='saveMdl'){closeSaveManager();return;}
+  const b=e.target.closest('button');if(!b)return;
+  const global=b.dataset.saveGlobal,act=b.dataset.saveAct,id=b.dataset.id;
+  try{
+    if(global==='close'){closeSaveManager();return;}
+    if(global==='save'){saveNow();renderSaveManager();toast('已经保存');return;}
+    if(global==='export'){const info=Storage.getActiveInfo();downloadJson(Storage.exportActive(),info.name||'hejing-save');return;}
+    if(global==='import'){$('saveImport').click();return;}
+    if(global==='new'){
+      if(Storage.listSlots().length>=Storage.MAX_SLOTS){window.alert(`最多只能保留 ${Storage.MAX_SLOTS} 个自由世界，请先删除一个旧存档。`);return;}
+      const name=window.prompt('给新世界起个名字：',`溪谷 ${Storage.listSlots().length+1}`);if(name===null)return;
+      saveNow();installState(null,true);Storage.createSlot(name,S,true);saveNow();closeSaveManager();toast('新世界已创建');return;
+    }
+    if(act==='load'){loadFreeSlot(id,false);return;}
+    if(act==='rename'){const slot=Storage.listSlots().find(s=>s.id===id),name=window.prompt('新的存档名称：',slot?slot.name:'');if(name!==null){Storage.renameSlot(id,name);renderSaveManager();}return;}
+    if(act==='export'){const slot=Storage.listSlots().find(s=>s.id===id);downloadJson(Storage.exportSlot(id),slot?slot.name:'hejing-save');return;}
+    if(act==='delete'){const slot=Storage.listSlots().find(s=>s.id===id);if(window.confirm(`确定删除“${slot?slot.name:'这个存档'}”吗？此操作无法恢复。`)){Storage.deleteSlot(id);renderSaveManager();}return;}
+  }catch(err){window.alert(err.message||'存档操作失败。');}
+});
+$('saveImport').addEventListener('change',async e=>{
+  const file=e.target.files&&e.target.files[0];e.target.value='';if(!file)return;
+  try{
+    const info=Storage.getActiveInfo();
+    if(info.kind==='challenge'&&!window.confirm('导入并加载自由世界会结束当前挑战。继续吗？'))return;
+    saveNow();if(info.kind==='challenge')Storage.discardChallenge();
+    const env=Storage.importText(await file.text());loadFreeSlot(env.id,true);
+  }catch(err){window.alert(err.message||'导入失败。');renderSaveManager();}
+});
+
 /* ---------------- 交互 ---------------- */
 let drag=null;
 function localPt(e){const r=cv.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
@@ -1268,7 +1372,15 @@ $('zout').onclick=()=>zoomTo(view.zoom/1.35);
 $('zfit').onclick=()=>{view.panX=0;view.panY=0;zoomTo(1);};
 $('play').onclick=()=>{S.paused=!S.paused;if(!S.people.length)S.paused=true;updateUI();};
 $('speed').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.speed=+b.dataset.s;syncControls();});
-$('reset').onclick=()=>{if(!window.confirm('确定要重来吗？当前世界的进度会被删除，且无法恢复。'))return;try{localStorage.removeItem(SAVE);}catch(err){}init(true);saveNow();};
+$('reset').onclick=()=>{
+  const info=Storage.getActiveInfo();
+  if(info.kind==='challenge'){
+    if(window.confirm('“重来”会结束当前挑战并回到挑战前的自由世界。继续吗？'))returnToFreeWorld();
+    return;
+  }
+  if(!window.confirm(`确定重来“${info.name||'当前世界'}”吗？这个存档槽会被新的世界覆盖，且无法恢复。`))return;
+  installState(null,true);saveNow();toast('当前存档已重新开始');
+};
 $('tax').addEventListener('input',e=>{S.tax=+e.target.value/100;$('taxv').textContent=e.target.value+'%';});
 $('policy').addEventListener('change',e=>{S.policy=e.target.value;$('policyDesc').textContent=POLICIES[S.policy];chron(`溪谷改行“${e.target.selectedOptions[0].textContent}”。`,'info');updateUI();});
 $('alOn').addEventListener('change',e=>{S.alertsOn=e.target.checked;if(!S.alertsOn)S.alerts=[];dirty=true;updateUI();});
@@ -1298,12 +1410,17 @@ function frame(now){
   if(now-lastSave>5000){lastSave=now;saveNow();}
   requestAnimationFrame(frame);
 }
-function init(fresh){
-  S=newState();
-  if(!fresh){
-    try{const raw=localStorage.getItem(SAVE);if(raw){const o=JSON.parse(raw);if(o&&o.v===1&&Array.isArray(o.people)&&o.people.length)S=Object.assign(newState(),o);}}catch(err){S=newState();}
-    S.paused=false;
-  }
+function normalizeState(raw){
+  const base=newState(),o=raw&&typeof raw==='object'?raw:{};
+  const state=Object.assign(base,o);
+  state.cd=Object.assign({},base.cd,o.cd||{});
+  state.hist=Object.assign({},base.hist,o.hist||{});
+  for(const k of ['pop','food','wealth','happy','coh'])if(!Array.isArray(state.hist[k]))state.hist[k]=[];
+  for(const k of ['people','dead','built','watch','alerts','chron'])if(!Array.isArray(state[k]))state[k]=[];
+  return state;
+}
+function installState(raw,fresh){
+  S=fresh?newState():normalizeState(raw);S.paused=false;
   if(!S.people.length){
     seedPopulation();
     chron('第1年春。三十个人在溪谷群岛上开始了他们的生活。','info');
@@ -1312,6 +1429,14 @@ function init(fresh){
   applyBuilt();
   colorKey='';lastChron=-1;for(const k in _c)delete _c[k];
   computeHouses();syncControls();dirty=true;updateUI();
+}
+function init(fresh){
+  if(fresh){installState(null,true);return;}
+  const boot=Storage.bootstrap();
+  if(boot.session&&boot.session.state)installState(boot.session.state,false);
+  else{installState(null,true);Storage.createSlot('溪谷 1',S,true);saveNow();}
+  if(boot.migrated)setTimeout(()=>toast('旧版存档已安全迁移到 Save System v2'),60);
+  if(boot.migrationError)setTimeout(()=>toast(boot.migrationError,true),60);
 }
 buildStats();buildSeeds();readTheme();
 init(false);

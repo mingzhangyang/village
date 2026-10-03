@@ -206,3 +206,24 @@ details.how p{margin:8px 0 0;max-width:72ch}
   .dlg{border-radius:18px 18px 0 0;max-height:80vh;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}
   header{align-items:flex-start}
 }
+
+.save-dlg{max-width:680px}
+.save-dlg #saveStatus{color:var(--muted);font-size:12.5px}
+.save-slots{display:grid;gap:8px;margin:12px 0}
+.save-slot{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);background:var(--chip);border-radius:11px;padding:10px}
+.save-slot.active{border-color:var(--accent);background:var(--accent-soft)}
+.save-slot.broken{border-color:var(--warn);background:var(--warn-soft)}
+.save-slot-main{min-width:0;flex:1}
+.save-slot-main b{display:flex;align-items:center;gap:6px;font-size:13.5px}
+.save-slot-main span{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.save-current{font-size:10px;font-weight:600;color:var(--accent);border:1px solid currentColor;border-radius:99px;padding:1px 6px}
+.save-slot.broken .save-current{color:var(--warn)}
+.save-slot-actions{display:flex;flex-wrap:wrap;gap:5px;justify-content:flex-end}
+.save-slot-actions .btn{padding:4px 8px;font-size:11.5px}
+.save-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.save-actions .btn{flex:1 1 auto}
+@media (max-width:680px){
+  .save-slot{align-items:flex-start;flex-direction:column}
+  .save-slot-actions{width:100%;justify-content:flex-start}
+  .save-actions .btn{flex:1 1 calc(50% - 7px)}
+}

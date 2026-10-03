@@ -20,6 +20,7 @@
       <span class="date" id="date"></span>
       <button class="btn primary" id="play">暂停</button>
       <div class="seg" id="speed"><button data-s="1" class="on">1×</button><button data-s="3">3×</button><button data-s="10">10×</button></div>
+      <button class="btn" id="saveBtn">存档</button>
       <button class="btn" id="chBtn">挑战</button>
       <button class="btn" id="reset">重来</button>
     </div>
@@ -147,12 +148,31 @@
   </div>
 </div>
 
+<div class="dlg-back" id="saveMdl" hidden>
+  <div class="dlg card save-dlg" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
+    <div class="kick">存档管理</div>
+    <h2 id="saveTitle">我的溪谷</h2>
+    <p id="saveStatus"></p>
+    <div class="save-slots" id="saveSlots"></div>
+    <div class="save-actions">
+      <button class="btn primary" data-save-global="save">立即保存</button>
+      <button class="btn" data-save-global="new">新建世界</button>
+      <button class="btn" data-save-global="export">导出当前</button>
+      <button class="btn" data-save-global="import">导入存档</button>
+      <button class="btn" data-save-global="close">关闭</button>
+    </div>
+    <input id="saveImport" type="file" accept=".json,application/json" hidden>
+    <p class="mnote">自由世界最多保留 5 个。导入会创建新存档，不会覆盖已有世界；挑战使用独立临时存档。</p>
+  </div>
+</div>
+
 <div class="alert card" id="alert" hidden role="alert">
   <div class="atx"><b id="aName"></b><span id="aTxt"></span><span class="more" id="aMore"></span></div>
   <button class="btn" id="aGo">看看</button>
   <button class="btn primary" id="aOk">继续</button>
 </div>
 
+<script src="storage.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
