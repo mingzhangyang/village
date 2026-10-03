@@ -922,7 +922,7 @@ function renderGoal(){
   const C=CHALLENGES[c.id];setT('gName',`挑战：${C.n}`);
   setT('gTxt',c.result?(c.result.win?'挑战成功！':'挑战失败。')+c.result.why:c.txt);
   $('gBar').style.width=Math.round(clamp(c.result&&c.result.win?1:c.pct,0,1)*100)+'%';
-  setT('gQuit',c.result?'关闭':'放弃挑战');
+  setT('gQuit',c.result?'回到原世界':'放弃挑战');
   if(c.result&&!c.shown){c.shown=1;openModal('result');}
 }
 
@@ -1277,8 +1277,11 @@ $('saveMdl').addEventListener('click',e=>{
     if(global==='import'){$('saveImport').click();return;}
     if(global==='new'){
       if(Storage.listSlots().length>=Storage.MAX_SLOTS){window.alert(`最多只能保留 ${Storage.MAX_SLOTS} 个自由世界，请先删除一个旧存档。`);return;}
+      const info=Storage.getActiveInfo();
+      if(info.kind==='challenge'&&!window.confirm('新建自由世界会结束当前挑战，但挑战前的自由世界仍会保留。继续吗？'))return;
       const name=window.prompt('给新世界起个名字：',`溪谷 ${Storage.listSlots().length+1}`);if(name===null)return;
-      saveNow();installState(null,true);Storage.createSlot(name,S,true);saveNow();closeSaveManager();toast('新世界已创建');return;
+      saveNow();if(info.kind==='challenge')Storage.discardChallenge();
+      installState(null,true);Storage.createSlot(name,S,true);saveNow();closeSaveManager();toast('新世界已创建');return;
     }
     if(act==='load'){loadFreeSlot(id,false);return;}
     if(act==='rename'){const slot=Storage.listSlots().find(s=>s.id===id),name=window.prompt('新的存档名称：',slot?slot.name:'');if(name!==null){Storage.renameSlot(id,name);renderSaveManager();}return;}
@@ -1292,7 +1295,8 @@ $('saveImport').addEventListener('change',async e=>{
     const info=Storage.getActiveInfo();
     if(info.kind==='challenge'&&!window.confirm('导入并加载自由世界会结束当前挑战。继续吗？'))return;
     saveNow();if(info.kind==='challenge')Storage.discardChallenge();
-    const env=Storage.importText(await file.text());loadFreeSlot(env.id,true);
+    const env=Storage.importText(await file.text()),loaded=Storage.loadSlot(env.id,true);
+    installState(loaded.state,false);closeSaveManager();toast('已导入并加载存档');
   }catch(err){window.alert(err.message||'导入失败。');renderSaveManager();}
 });
 
