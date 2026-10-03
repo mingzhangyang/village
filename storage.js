@@ -24,9 +24,28 @@ function cleanName(name,fallback){
   return value||fallback||'未命名溪谷';
 }
 function validState(state){
-  return !!state&&typeof state==='object'&&state.v===1&&Number.isFinite(state.day)&&state.day>=0&&
-    Array.isArray(state.people)&&Array.isArray(state.dead)&&Array.isArray(state.built)&&
-    state.hist&&typeof state.hist==='object';
+  const peopleOk=Array.isArray(state&&state.people)&&state.people.every(p=>p&&typeof p==='object'&&Number.isFinite(p.id)&&typeof p.name==='string'&&p.name.length<=100&&Number.isFinite(p.age));
+  return !!state&&typeof state==='object'&&state.v===1&&Number.isFinite(state.day)&&state.day>=0&&peopleOk&&
+    Array.isArray(state.dead)&&Array.isArray(state.built)&&state.hist&&typeof state.hist==='object';
+}
+function sanitizeImported(value,depth){
+  if(depth>18)fail('IMPORT_INVALID','存档嵌套层级异常。');
+  if(value===null||typeof value==='boolean'||typeof value==='number')return value;
+  if(typeof value==='string')return value.replace(/</g,'＜').replace(/>/g,'＞');
+  if(Array.isArray(value)){
+    if(value.length>20000)fail('IMPORT_INVALID','存档数组异常过大。');
+    return value.map(v=>sanitizeImported(v,depth+1));
+  }
+  if(typeof value==='object'){
+    const out={};let n=0;
+    for(const [k,v] of Object.entries(value)){
+      if(k==='__proto__'||k==='constructor'||k==='prototype')continue;
+      if(++n>500)fail('IMPORT_INVALID','存档对象字段异常过多。');
+      out[k]=sanitizeImported(v,depth+1);
+    }
+    return out;
+  }
+  return null;
 }
 function newIndex(){
   return {version:SCHEMA_VERSION,active:{kind:'slot',id:null},slots:[]};
@@ -236,6 +255,7 @@ function importText(text){
   }else if(parsed.v===1){
     source=parsed;name='旧版导入存档';
   }
+  source=sanitizeImported(source,0);
   if(!validState(source))fail('IMPORT_INVALID','这个文件不是有效的禾境存档，或数据已经损坏。');
   return createSlot(name,source,false);
 }
