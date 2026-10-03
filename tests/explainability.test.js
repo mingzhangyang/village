@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MIGRATION_RULES,
   cohesionBreakdown,
   happinessBreakdown,
   migrationBreakdown,
@@ -120,6 +121,17 @@ describe('explainability', () => {
     expect(equal.rawTarget - market.rawTarget).toBe(19);
   });
 
+  it('pins the migration rule values shared by simulation and UI', () => {
+    expect(MIGRATION_RULES).toEqual({
+      sadHappinessThreshold: 22,
+      warningSadDays: 7,
+      automaticSadDaysThreshold: 12,
+      automaticDailyChance: 0.06,
+      wanderMaxAge: 35 * 40,
+      wanderHappinessThreshold: 60,
+    });
+  });
+
   it('reports the exact automatic-leaving threshold without consuming RNG', () => {
     const base = {
       status: 'alive',
@@ -128,6 +140,10 @@ describe('explainability', () => {
       partner: null,
       happiness: 20,
     };
+
+    const before = structuredClone(base);
+    migrationBreakdown(base);
+    expect(base).toEqual(before);
 
     expect(migrationBreakdown({ ...base, sadDays: 12 })).toMatchObject({
       automaticEligible: false,

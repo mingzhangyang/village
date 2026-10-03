@@ -1,5 +1,14 @@
 import { YEAR } from './clock.js';
 
+export const MIGRATION_RULES = Object.freeze({
+  sadHappinessThreshold: 22,
+  warningSadDays: 7,
+  automaticSadDaysThreshold: 12,
+  automaticDailyChance: 0.06,
+  wanderMaxAge: 35 * YEAR,
+  wanderHappinessThreshold: 60,
+});
+
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export function wealthStats(people) {
@@ -113,17 +122,17 @@ export function migrationBreakdown(person) {
   const alive = person.status === 'alive';
   const adult = alive && person.job !== 'child';
   const sadDays = Math.max(0, person.sadDays || 0);
-  const automaticEligible = adult && sadDays > 12;
+  const automaticEligible = adult && sadDays > MIGRATION_RULES.automaticSadDaysThreshold;
   const worker = adult && person.job !== 'elder';
-  const wanderEligible = worker && person.age < 35 * YEAR && !person.partner && person.happiness < 60;
+  const wanderEligible = worker && person.age < MIGRATION_RULES.wanderMaxAge && !person.partner && person.happiness < MIGRATION_RULES.wanderHappinessThreshold;
 
   return {
     alive,
     adult,
     sadDays,
     automaticEligible,
-    dailyChance: automaticEligible ? 0.06 : 0,
-    daysUntilAutomaticRisk: adult && !automaticEligible ? Math.max(0, 13 - sadDays) : 0,
+    dailyChance: automaticEligible ? MIGRATION_RULES.automaticDailyChance : 0,
+    daysUntilAutomaticRisk: adult && !automaticEligible ? Math.max(0, MIGRATION_RULES.automaticSadDaysThreshold + 1 - sadDays) : 0,
     wanderEligible,
   };
 }
