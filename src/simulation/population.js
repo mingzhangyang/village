@@ -3,6 +3,7 @@ import { JOBS, TRAITS, SURN, GIVEN, SKIN, HAIR } from './constants.js';
 import { YEAR, ageY } from './clock.js';
 import { random, rand, randi, pick, clamp } from './random.js';
 import { getState, markStateDirty } from './state.js';
+import { defaultSurnameForNewPerson, knownPersonSurname, migratedFamilyName, surnameFromName } from './names.js';
 
 export const ta=p=>p.gender==='女'?'她':'他';
 export const isWorker=p=>p.job!=='child'&&p.job!=='elder';
@@ -20,11 +21,19 @@ export function living(id){
   const S = getState();for(const p of S.people)if(p.id===id)return p;return null;}
 export function byId(id){
   const S = getState();return living(id)||S.dead.find(p=>p.id===id)||null;}
-export function uniqueName(){
+export function uniqueName(surname=null,id=null){
   const S = getState();
   const used=new Set(S.people.map(p=>p.name));
-  for(let k=0;k<40;k++){const n=random()<0.14?'阿'+pick(GIVEN):pick(SURN)+pick(GIVEN)+(random()<0.45?pick(GIVEN):'');if(!used.has(n))return n;}
-  return pick(SURN)+pick(GIVEN)+pick(GIVEN);
+  const inherit=legacyName=>surname
+    ?migratedFamilyName({id,name:legacyName},surname,used)
+    :legacyName;
+  for(let k=0;k<40;k++){
+    const n=random()<0.14
+      ?'阿'+pick(GIVEN)
+      :pick(SURN)+pick(GIVEN)+(random()<0.45?pick(GIVEN):'');
+    if(!used.has(n))return inherit(n);
+  }
+  return inherit(pick(SURN)+pick(GIVEN)+pick(GIVEN));
 }
 export function foodDays(){
   const S = getState();let n=0;for(const p of S.people)n+=need(p);return n>0?S.food/n:999;}
@@ -44,7 +53,13 @@ export function homeTile(p){
   const sl=MAP.V[p.village].slots;return sl[p.home%sl.length];}
 export function makePerson(o){
   const S = getState();
-  const p={id:S.nextId++,name:o.name||uniqueName(),gender:o.gender||(random()<0.5?'男':'女'),age:o.age,village:o.village,job:'child',
+  const parentPeople=(o.parents||[]).map(id=>byId(id)).filter(Boolean);
+  const father=parentPeople.find(parent=>parent.gender==='男')||null;
+  const id=S.nextId++;
+  const inheritedSurname=o.surname||knownPersonSurname(father);
+  const name=o.name||uniqueName(inheritedSurname,id);
+  const surname=inheritedSurname||surnameFromName(name)||defaultSurnameForNewPerson(id);
+  const p={id,name,surname,gender:o.gender||(random()<0.5?'男':'女'),age:o.age,village:o.village,job:'child',
     wealth:o.wealth!=null?o.wealth:0,happiness:o.happiness!=null?o.happiness:rand(50,68),health:100,skill:o.skill!=null?o.skill:rand(10,40),
     traits:[],rel:{},met:{},partner:null,parents:o.parents||[],children:[],hist:[],fed:1,hungerDays:0,sadDays:0,lastIncome:0,
     status:'alive',home:0,x:0,y:0,tx:0,ty:0,skin:pick(SKIN),hair:pick(HAIR),lastBirth:-999,plagueTag:0};
