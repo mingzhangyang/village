@@ -125,6 +125,46 @@ describe('simulation smoke invariants', () => {
     expect(restored.familyNameVersion).toBe(1);
   });
 
+  it('rewrites renamed residents in one pass without cascading substitutions', () => {
+    const legacy = newState(8240);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '林春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '林岚', gender: '女', parents: [1, 2], hist: [{ d: 0, t: '林岚出生' }] },
+      { id: 4, name: '林松', gender: '男', parents: [], hist: [] },
+      { id: 5, name: '许秋', gender: '女', parents: [], hist: [] },
+      { id: 6, name: '许岚', gender: '男', parents: [4, 5], hist: [{ d: 0, t: '许岚出生' }] },
+    ];
+    legacy.chron = [{ d: 0, t: '林岚与许岚一起玩耍。', k: 'info' }];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const firstChild = restored.people.find(person => person.id === 3);
+    const secondChild = restored.people.find(person => person.id === 6);
+
+    expect(firstChild.name.startsWith('许')).toBe(true);
+    expect(secondChild.name.startsWith('林')).toBe(true);
+    expect(firstChild.hist[0].t).toContain(firstChild.name);
+    expect(secondChild.hist[0].t).toContain(secondChild.name);
+    expect(restored.chron[0].t).toContain(firstChild.name);
+    expect(restored.chron[0].t).toContain(secondChild.name);
+  });
+
+  it('does not downgrade or rewrite saves from a newer family-name version', () => {
+    const future = newState(8241);
+    future.familyNameVersion = 99;
+    future.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '林岚', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶衡晴', gender: '女', parents: [2, 1], hist: [] },
+    ];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(future)));
+
+    expect(restored.familyNameVersion).toBe(99);
+    expect(restored.people.find(person => person.id === 3).name).toBe('叶衡晴');
+  });
+
   it('resumes the saved random stream after state normalization', () => {
     const state = newState(8241);
     setState(state);

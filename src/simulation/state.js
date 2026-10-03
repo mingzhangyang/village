@@ -26,12 +26,12 @@ const FAMILY_NAME_VERSION = 1;
 function rewriteRenamedResidents(state, renames) {
   if (!renames.length) return;
   const ordered = [...renames].sort((a, b) => b[0].length - a[0].length);
-  const rewrite = value => {
-    if (typeof value !== 'string') return value;
-    let result = value;
-    for (const [before, after] of ordered) result = result.split(before).join(after);
-    return result;
-  };
+  const replacements = new Map(ordered);
+  const escapeRegExp = value => value.replace(/[.*+?^$()|[\\]\\{}]/g, '\\$&');
+  const pattern = new RegExp(ordered.map(([before]) => escapeRegExp(before)).join('|'), 'g');
+  const rewrite = value => typeof value === 'string'
+    ? value.replace(pattern, match => replacements.get(match))
+    : value;
   const everyone = [...state.people, ...state.dead];
 
   for (const person of everyone) {
@@ -99,6 +99,6 @@ export function normalizeState(raw){
   state.hist=Object.assign({},base.hist,o.hist||{});
   for(const k of ['pop','food','wealth','happy','coh'])if(!Array.isArray(state.hist[k]))state.hist[k]=[];
   for(const k of ['people','dead','built','watch','alerts','chron'])if(!Array.isArray(state[k]))state[k]=[];
-  if(o.familyNameVersion!==FAMILY_NAME_VERSION)repairLegacyFamilyNames(state);
+  if(!Number.isFinite(o.familyNameVersion)||o.familyNameVersion<FAMILY_NAME_VERSION)repairLegacyFamilyNames(state);
   return state;
 }
