@@ -39,14 +39,14 @@ npm run build
 - Worker 名称：`village`
 - 生产分支：`main`
 - Build command：`npm run build`
-- Deploy command：`npx wrangler deploy`
+- Deploy command：`npm run deploy`
 - Root directory：仓库根目录
 - 静态资源目录：`./dist`
 - Custom Domain：`village.orangely.xyz`
 
 在 Cloudflare Workers & Pages 中创建或选择名为 `village` 的 Worker，然后在 **Settings > Builds** 连接本仓库。Worker 名称必须与 `wrangler.toml` 中的 `name` 一致。
 
-`wrangler deploy` 会同时发布 `dist/` 并按配置绑定 `village.orangely.xyz`。绑定前请确认 `orangely.xyz` 已由当前 Cloudflare 账号管理，并且 `village.orangely.xyz` 没有与 Custom Domain 冲突的现有 CNAME 记录。
+`npm run deploy` 固定使用 Wrangler 4.147.0，避免 Workers Builds 因自动获取新版 Wrangler 而在没有仓库变更时改变部署行为。部署会同时发布 `dist/` 并按配置绑定 `village.orangely.xyz`。绑定前请确认 `orangely.xyz` 已由当前 Cloudflare 账号管理，并且 `village.orangely.xyz` 没有与 Custom Domain 冲突的现有 CNAME 记录。
 
 ## 工程结构
 
