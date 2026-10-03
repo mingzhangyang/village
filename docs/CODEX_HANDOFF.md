@@ -13,11 +13,9 @@
 - Phase 4 — Simulation Test Suite：PR #5
 - Phase 5 — Explainability：PR #6
 
-Phase 5 收尾分支：
+Phase 5 收尾：PR #7 已合并。
 
-`fix/phase5-closeout`
-
-Phase 5 的功能实现已经进入 `main`。本收尾仅消除最后两类工程遗留：迁移规则的重复定义，以及缺失的自动 CI 验证。
+Phase 5 的功能实现与工程收尾均已进入 `main`：迁移规则已收敛为单一事实来源，PR CI 已覆盖 lint、unit tests 和 build。
 
 ## 2. Phase 5 已实现范围
 
@@ -123,4 +121,4 @@ Phase 5 的完成标准现在由代码和 CI 共同约束：
 - PR 必须通过 lint / unit tests / build
 - PR 描述明确列出公式复用、兼容边界和验证结果
 
-本收尾 PR 通过 CI 并合并后，`docs/CODEX_HANDOFF.md` 中 Phase 5 的任务即全部完成。
+PR #7 已通过 CI 并合并。至此，`docs/CODEX_HANDOFF.md` 中 Phase 5 的任务全部完成。
