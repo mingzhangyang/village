@@ -218,6 +218,9 @@ function returnToOrigin(){
 function discardChallenge(){
   return returnToOrigin();
 }
+function clearChallenge(){
+  localStorage.removeItem(CHALLENGE_KEY);
+}
 function promoteChallenge(state,name){
   if(!validState(state))fail('INVALID_STATE','挑战世界状态不完整，无法另存。');
   const free=JSON.parse(JSON.stringify(state));free.ch=null;free.paused=false;
@@ -280,7 +283,7 @@ function bootstrap(){
 window.HejingStorage={
   SCHEMA_VERSION,GAME_VERSION,MAX_SLOTS,
   bootstrap,loadActive,saveActive,createSlot,saveSlot,loadSlot,renameSlot,deleteSlot,listSlots,getActiveInfo,
-  startChallenge,returnToOrigin,discardChallenge,promoteChallenge,
+  startChallenge,returnToOrigin,discardChallenge,clearChallenge,promoteChallenge,
   exportSlot,exportActive,importText,
   validateState:validState
 };
