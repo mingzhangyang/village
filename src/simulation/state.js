@@ -114,23 +114,45 @@ function repairLegacyFamilyNames(state) {
 
   for (const person of ordered) person.surname = personSurname(person);
 
-  for (const person of ordered) {
-    if (!Array.isArray(person.parents) || !person.parents.length) continue;
-    const parents = person.parents.map(id => byId.get(id)).filter(Boolean);
-    const father = parents.find(parent => parent.gender === '男');
-    if (!father) continue;
-    const surname = personSurname(father);
-    if (!surname) continue;
+  const visitState = new Map();
+  const ancestryResolved = new Map();
+  const migratePerson = person => {
+    const status = visitState.get(person);
+    if (status === 'done') return ancestryResolved.get(person) !== false;
+    if (status === 'visiting') return false;
 
-    person.surname = surname;
-    if (typeof person.name === 'string' && person.name.startsWith(surname)) continue;
+    visitState.set(person, 'visiting');
+    const parents = Array.isArray(person.parents)
+      ? person.parents.map(id => byId.get(id)).filter(Boolean)
+      : [];
+    const father = parents.find(parent => parent.gender === '男') || null;
+    const resolved = father
+      ? father !== person && migratePerson(father)
+      : true;
 
-    const oldName = person.name;
-    releaseName(oldName);
-    const nextName = migratedFamilyName(person, surname, usedNames);
-    person.name = nextName;
-    reserveName(nextName);
-  }
+    if (father && resolved) {
+      const surname = personSurname(father);
+      if (surname) {
+        person.surname = surname;
+        if (!(typeof person.name === 'string' && person.name.startsWith(surname))) {
+          const oldName = person.name;
+          releaseName(oldName);
+          const nextName = migratedFamilyName(person, surname, usedNames);
+          person.name = nextName;
+          reserveName(nextName);
+        }
+      }
+    }
+
+    visitState.set(person, 'done');
+    ancestryResolved.set(person, resolved);
+    return resolved;
+  };
+
+  // Imported saves do not require IDs to follow ancestry order. Starting from a
+  // stable ID order keeps collision handling deterministic, while recursion makes
+  // sure every resolvable father has reached his final surname before descendants.
+  for (const person of ordered) migratePerson(person);
 
   rewriteRenamedResidents(state, originalNames);
   state.familyNameVersion = FAMILY_NAME_VERSION;

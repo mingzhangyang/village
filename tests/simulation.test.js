@@ -260,6 +260,45 @@ describe('simulation smoke invariants', () => {
     expect(restored.chron[0].t).toBe('叶岚出生了。');
   });
 
+  it('resolves paternal ancestors before descendants when imported ids are out of order', () => {
+    const legacy = newState(8247);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '叶岚', gender: '女', parents: [5, 2], hist: [{ d: 0, t: '叶岚出生' }] },
+      { id: 2, name: '林松', gender: '男', parents: [4, 3], hist: [{ d: 0, t: '林松出生' }] },
+      { id: 3, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 4, name: '周春', gender: '女', parents: [], hist: [] },
+      { id: 5, name: '吴秋', gender: '女', parents: [], hist: [] },
+    ];
+    legacy.chron = [{ d: 0, t: '林松的孩子叶岚出生了。', k: 'birth' }];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const child = restored.people.find(person => person.id === 1);
+    const father = restored.people.find(person => person.id === 2);
+
+    expect(father.name).toBe('许松');
+    expect(father.surname).toBe('许');
+    expect(child.name).toBe('许岚');
+    expect(child.surname).toBe('许');
+    expect(child.hist[0].t).toBe('许岚出生');
+    expect(restored.chron[0].t).toBe('许松的孩子许岚出生了。');
+  });
+
+  it('does not recurse forever on cyclic imported paternal ancestry', () => {
+    const legacy = newState(8248);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '林松', gender: '男', parents: [2], hist: [] },
+      { id: 2, name: '许溪', gender: '男', parents: [1], hist: [] },
+    ];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+
+    expect(restored.people.find(person => person.id === 1).name).toBe('林松');
+    expect(restored.people.find(person => person.id === 2).name).toBe('许溪');
+    expect(restored.familyNameVersion).toBe(1);
+  });
+
   it('does not downgrade or rewrite saves from a newer family-name version', () => {
     const future = newState(8241);
     future.familyNameVersion = 99;
