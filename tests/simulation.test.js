@@ -26,6 +26,17 @@ afterEach(() => {
   configureEconomy({});
 });
 
+function createChallengeRules(state) {
+  return createChallenges({
+    getState: () => state,
+    YEAR,
+    SEASON,
+    clamp: (value, min, max) => Math.min(max, Math.max(min, value)),
+    rand: (min, max) => min + Math.random() * (max - min),
+    chron: () => {},
+  });
+}
+
 describe('simulation smoke invariants', () => {
   it('creates a complete new state and advances a tick without non-finite numbers', () => {
     const state = newState();
@@ -57,7 +68,11 @@ describe('simulation smoke invariants', () => {
     expect(state.dead.every(person => !livingIds.has(person.id))).toBe(true);
   });
 
-  it('removes deceased and departed people from the living collection', () => {
+  it.each([
+    ['deceased', 'dead', '疫病'],
+    ['departed', 'left', undefined],
+    ['wandered away', 'left', 'wander'],
+  ])('removes %s people from the living collection', (kind, status, cause) => {
     const state = newState();
     const person = {
       id: 1,
@@ -79,13 +94,24 @@ describe('simulation smoke invariants', () => {
     state.people = [person];
     state.sel = person.id;
     setState(state);
+    const left0 = state.left;
+    const context = { left0 };
+    const challenges = createChallengeRules(state);
 
-    remove(person, 'dead', '疫病');
+    remove(person, status, cause);
 
     expect(state.people).not.toContain(person);
     expect(state.dead).toContain(person);
-    expect(person.status).toBe('dead');
+    expect(person.status).toBe(status);
     expect(new Set(state.people.map(item => item.id)).has(person.id)).toBe(false);
+
+    if (status === 'dead') {
+      expect(state.left).toBe(left0);
+    } else {
+      expect(state.left).toBe(left0 + 1);
+      expect(state.lastLeft).toBe(person.name);
+      expect(challenges.stay.check(context, state.day).st).toBe('lose');
+    }
   });
 });
 
@@ -106,14 +132,7 @@ describe('challenge deadlines', () => {
     state.gini = 0.4;
     state.cohesion = 40;
     setState(state);
-    const challenges = createChallenges({
-      getState: () => state,
-      YEAR,
-      SEASON,
-      clamp: (value, min, max) => Math.min(max, Math.max(min, value)),
-      rand: (min, max) => min + Math.random() * (max - min),
-      chron: () => {},
-    });
+    const challenges = createChallengeRules(state);
     const cases = [
       ['drought', 120, { hd0: 0 }],
       ['equal', 400, { hold: 0 }],
