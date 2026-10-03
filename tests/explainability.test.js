@@ -50,21 +50,27 @@ describe('explainability', () => {
   });
 
   it('explains drought and policy effects on cohesion using the production formula', () => {
+    const state = { cohesion: 50, policy: 'equal', drought: 5, festival: 10, publicPerCap: 0.5 };
+    const before = structuredClone(state);
     const equal = cohesionBreakdown({
-      state: { cohesion: 50, policy: 'equal', drought: 5, festival: 0, publicPerCap: 0 },
-      averageFriends: 0,
-      sadFraction: 0,
-      gini: 0,
+      state,
+      averageFriends: 2,
+      sadFraction: 0.2,
+      gini: 0.25,
+      teahouseCount: 2,
     });
     const market = cohesionBreakdown({
-      state: { cohesion: 50, policy: 'market', drought: 5, festival: 0, publicPerCap: 0 },
-      averageFriends: 0,
-      sadFraction: 0,
-      gini: 0,
+      state: { ...state, policy: 'market' },
+      averageFriends: 2,
+      sadFraction: 0.2,
+      gini: 0.25,
+      teahouseCount: 2,
     });
 
     expect(equal.factors.find(factor => factor.key === 'drought').value).toBe(4);
     expect(equal.factors.find(factor => factor.key === 'policy').value).toBe(3);
+    expect(equal.rawTarget).toBe(66);
+    expect(state).toEqual(before);
     expect(market.factors.find(factor => factor.key === 'drought').value).toBe(-8);
     expect(market.factors.find(factor => factor.key === 'policy').value).toBe(-4);
     expect(equal.rawTarget - market.rawTarget).toBe(19);

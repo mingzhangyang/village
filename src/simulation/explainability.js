@@ -100,7 +100,7 @@ export function cohesionBreakdown({
   const policyValue = add('policy', state.policy === 'market' ? -4 : state.policy === 'equal' ? 3 : 0);
   const teahouseValue = add('teahouse', 3 * Math.min(2, teahouseCount));
 
-  let rawTarget = base + friendsValue - -inequalityValue + publicValue + festivalValue + sadValue;
+  let rawTarget = base + friendsValue + inequalityValue + publicValue + festivalValue + sadValue;
   rawTarget += droughtValue;
   rawTarget += policyValue;
   rawTarget += teahouseValue;

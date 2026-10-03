@@ -743,19 +743,25 @@ function updateFate(){
   $('bSkill').style.width=Math.round(p.skill)+'%';setT('vSkill',String(Math.round(p.skill)));
   $('bFed').style.width=Math.round(clamp(p.fed,0,1)*100)+'%';setT('vFed',Math.round(clamp(p.fed,0,1)*100)+'%');
   $('bFr').style.width=Math.min(100,fr/8*100)+'%';setT('vFr',String(fr));
-  const wealth=wealthStats(S.people);
-  const happyWhy=happinessBreakdown({
-    state:S,
-    person:p,
-    averageWealth:wealth.average,
-    gini:wealth.gini,
-    seasonIndex:seasonIdx(),
-    friendCount:fr,
-    marketCount:BC(p.village,'market'),
-    teahouseCount:BC(p.village,'teahouse')
-  });
-  setT('fHappyTrend',`驱动目标 ${Math.round(happyWhy.target)} · 每日约 ${signed(happyWhy.expectedChange)}`);
-  setH('fHappyWhy',whyRows(happyWhy.factors));
+  const alive=p.status==='alive';
+  if(alive){
+    const wealth=wealthStats(S.people);
+    const happyWhy=happinessBreakdown({
+      state:S,
+      person:p,
+      averageWealth:wealth.average,
+      gini:wealth.gini,
+      seasonIndex:seasonIdx(),
+      friendCount:fr,
+      marketCount:BC(p.village,'market'),
+      teahouseCount:BC(p.village,'teahouse')
+    });
+    setT('fHappyTrend',`驱动目标 ${Math.round(happyWhy.target)} · 每日约 ${signed(happyWhy.expectedChange)}`);
+    setH('fHappyWhy',whyRows(happyWhy.factors));
+  }else{
+    setT('fHappyTrend','生命已结束，幸福不再变化');
+    setH('fHappyWhy','<span class="empty">没有当前驱动因素。</span>');
+  }
   const moveWhy=migrationBreakdown(p);
   let moveText='幸福低于 22 会累积深度愁苦日；超过 12 日后，每日有 6% 概率自动离开。';
   if(!moveWhy.alive)moveText='这位居民已不在溪谷，不再计算离开风险。';
@@ -777,7 +783,6 @@ function updateFate(){
   setH('fRels',items.length?items.join(''):'<span class="empty">还没有亲近的人。</span>');
   setT('favor',`恩惠 ${S.favor}/5`);
   const w=S.watch.includes(p.id);$('fWatch').classList.toggle('on',w);setT('fWatch',w?'已关注':'关注');
-  const alive=p.status==='alive';
   document.querySelectorAll('#help button').forEach(b=>{b.disabled=!alive||S.favor<1;});
   if(!$('intro').hidden&&+$('intro').dataset.for!==p.id)$('intro').hidden=true;
   setH('fLife',p.hist.slice(-14).reverse().map(h=>`<li><time>${dateLabel(h.d)}</time><span>${h.t}</span></li>`).join(''));
