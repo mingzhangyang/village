@@ -1,4 +1,4 @@
-import { SURN } from './constants.js';
+import { GIVEN, SURN } from './constants.js';
 
 export function surnameFromName(name) {
   const value = typeof name === 'string' ? name : '';
@@ -22,4 +22,19 @@ export function givenNameFromDisplayName(name) {
   if (surname) return value.slice(surname.length);
   if (value.startsWith('阿')) return value.slice(1);
   return value;
+}
+
+export function migratedFamilyName(person, surname, usedNames = new Set()) {
+  const numericId = Number.isFinite(person?.id) ? Math.max(1, Math.abs(Math.trunc(person.id))) : 1;
+  const given = givenNameFromDisplayName(person?.name) || GIVEN[(numericId - 1) % GIVEN.length];
+  const base = `${surname}${given}`;
+  if (!usedNames.has(base)) return base;
+
+  for (let offset = 0; offset < GIVEN.length; offset += 1) {
+    const suffix = GIVEN[(numericId + offset) % GIVEN.length];
+    const candidate = `${base}${suffix}`;
+    if (!usedNames.has(candidate)) return candidate;
+  }
+
+  return `${base}${GIVEN[numericId % GIVEN.length]}${GIVEN[(numericId + 1) % GIVEN.length]}`;
 }

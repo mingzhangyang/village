@@ -105,6 +105,26 @@ describe('simulation smoke invariants', () => {
     expect(setupEqualChallenge(5129)).toEqual(setupEqualChallenge(5129));
   });
 
+  it('repairs paternal surnames when loading saves created before the family-name rule', () => {
+    const legacy = newState(8239);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '林岚', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶衡晴', gender: '女', parents: [2, 1], hist: [{ d: 0, t: '叶衡晴出生在禾谷村' }] },
+    ];
+    legacy.chron = [{ d: 0, t: '许溪归 与 林岚 的孩子 叶衡晴 出生了。', k: 'birth' }];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const child = restored.people.find(person => person.id === 3);
+
+    expect(child.name).toBe('许衡晴');
+    expect(child.surname).toBe('许');
+    expect(child.hist[0].t).toContain('许衡晴');
+    expect(restored.chron[0].t).toContain('许衡晴');
+    expect(restored.familyNameVersion).toBe(1);
+  });
+
   it('resumes the saved random stream after state normalization', () => {
     const state = newState(8241);
     setState(state);

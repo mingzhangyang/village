@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { changeRel, remove, seedPopulation, setRel } from '../src/simulation/population.js';
+import { changeRel, makePerson, remove, seedPopulation, setRel } from '../src/simulation/population.js';
 import { newState, setState } from '../src/simulation/state.js';
 
 afterEach(() => {
@@ -39,6 +39,22 @@ describe('population', () => {
         expect(partner.partner).toBe(person.id);
       }
     }
+  });
+
+  it('inherits the father surname for children regardless of parent id order', () => {
+    const state = newState(9004);
+    setState(state);
+    const father = makePerson({ village: 'grain', age: 20, gender: '男', name: '许溪归' });
+    const mother = makePerson({ village: 'grain', age: 20, gender: '女', name: '林岚' });
+    const child = makePerson({
+      village: 'grain',
+      age: 0,
+      parents: [mother.id, father.id],
+      home: father.home,
+    });
+
+    expect(child.surname).toBe('许');
+    expect(child.name.startsWith('许')).toBe(true);
   });
 
   it('keeps relationship scores symmetric and clamps them to the supported range', () => {
