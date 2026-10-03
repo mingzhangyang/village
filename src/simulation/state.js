@@ -55,15 +55,26 @@ function rewriteRenamedResidents(state, originalNames) {
   const rewrite = (value, replacements = sharedReplacements) => typeof value === 'string'
     ? value.replace(pattern, match => replacements.get(match) ?? match)
     : value;
+  const replacementsForResidents = residents => {
+    if (!residents.length) return sharedReplacements;
+    const replacements = new Map(sharedReplacements);
+    const specific = new Map();
+    for (const resident of residents) {
+      const before = originalNames.get(resident);
+      if (!before || resident.name === before) continue;
+      const previous = specific.get(before);
+      specific.set(before, previous && previous !== resident.name ? before : resident.name);
+    }
+    for (const [before, after] of specific) replacements.set(before, after);
+    return replacements;
+  };
 
   for (const person of everyone) {
     if (!Array.isArray(person.hist)) continue;
     const before = originalNames.get(person);
     // A resident's own history treats its old display name as a self-reference,
     // even when another legacy resident reused the same display name.
-    const replacements = before && person.name !== before
-      ? new Map(sharedReplacements).set(before, person.name)
-      : sharedReplacements;
+    const replacements = replacementsForResidents([person]);
     for (const entry of person.hist) {
       if (entry && typeof entry.t === 'string') entry.t = rewrite(entry.t, replacements);
     }
@@ -73,12 +84,17 @@ function rewriteRenamedResidents(state, originalNames) {
   for (const alert of state.alerts) {
     if (!alert || typeof alert !== 'object') continue;
     const resident = residentsById.get(alert.id);
-    const before = resident ? originalNames.get(resident) : null;
-    const replacements = before && resident.name !== before
-      ? new Map(sharedReplacements).set(before, resident.name)
-      : sharedReplacements;
+    const replacements = resident ? replacementsForResidents([resident]) : sharedReplacements;
     alert.name = rewrite(alert.name, replacements);
     alert.text = rewrite(alert.text, replacements);
+  }
+  if (state.pending && typeof state.pending === 'object') {
+    const data = state.pending.d && typeof state.pending.d === 'object' ? state.pending.d : {};
+    const referencedIds = [data.p, data.a, data.b, ...(Array.isArray(data.ids) ? data.ids : [])];
+    const referencedResidents = referencedIds
+      .map(id => residentsById.get(id))
+      .filter(Boolean);
+    state.pending.res = rewrite(state.pending.res, replacementsForResidents(referencedResidents));
   }
   state.lastHunger = rewrite(state.lastHunger);
   state.lastLeft = rewrite(state.lastLeft);
@@ -92,8 +108,11 @@ function repairLegacyFamilyNames(state) {
     person,
     typeof person.name === 'string' && person.name ? person.name : null,
   ]));
+  const livingResidents = state.people.filter(person => person && typeof person === 'object');
+  const livingSet = new Set(livingResidents);
   const nameCounts = new Map();
-  for (const name of originalNames.values()) {
+  for (const person of livingResidents) {
+    const name = originalNames.get(person);
     if (name) nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
   }
   const usedNames = new Set(nameCounts.keys());
@@ -136,10 +155,11 @@ function repairLegacyFamilyNames(state) {
         person.surname = surname;
         if (!(typeof person.name === 'string' && person.name.startsWith(surname))) {
           const oldName = person.name;
-          releaseName(oldName);
-          const nextName = migratedFamilyName(person, surname, usedNames);
+          const isLiving = livingSet.has(person);
+          if (isLiving) releaseName(oldName);
+          const nextName = migratedFamilyName(person, surname, isLiving ? usedNames : new Set());
           person.name = nextName;
-          reserveName(nextName);
+          if (isLiving) reserveName(nextName);
         }
       }
     }

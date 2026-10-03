@@ -114,6 +114,11 @@ describe('simulation smoke invariants', () => {
       { id: 3, name: '叶衡晴', gender: '女', parents: [2, 1], hist: [{ d: 0, t: '叶衡晴出生在禾谷村' }] },
     ];
     legacy.chron = [{ d: 0, t: '许溪归 与 林岚 的孩子 叶衡晴 出生了。', k: 'birth' }];
+    legacy.pending = {
+      k: 'sick',
+      d: { p: 3 },
+      res: '郎中开了几副药，叶衡晴的气色一天天好起来。',
+    };
 
     const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
     const child = restored.people.find(person => person.id === 3);
@@ -122,6 +127,7 @@ describe('simulation smoke invariants', () => {
     expect(child.surname).toBe('许');
     expect(child.hist[0].t).toContain('许衡晴');
     expect(restored.chron[0].t).toContain('许衡晴');
+    expect(restored.pending.res).toContain('许衡晴');
     expect(restored.familyNameVersion).toBe(1);
   });
 
@@ -297,6 +303,27 @@ describe('simulation smoke invariants', () => {
     expect(restored.people.find(person => person.id === 1).name).toBe('林松');
     expect(restored.people.find(person => person.id === 2).name).toBe('许溪');
     expect(restored.familyNameVersion).toBe(1);
+  });
+
+  it('allows inherited living names to reuse a deceased resident name', () => {
+    const legacy = newState(8249);
+    delete legacy.familyNameVersion;
+    legacy.people = [
+      { id: 1, name: '许溪归', gender: '男', parents: [], hist: [] },
+      { id: 2, name: '林春', gender: '女', parents: [], hist: [] },
+      { id: 3, name: '叶岚', gender: '女', parents: [2, 1], hist: [{ d: 0, t: '叶岚出生' }] },
+    ];
+    legacy.dead = [
+      { id: 4, name: '许岚', gender: '男', parents: [], hist: [] },
+    ];
+
+    const restored = normalizeState(JSON.parse(JSON.stringify(legacy)));
+    const child = restored.people.find(person => person.id === 3);
+
+    expect(child.name).toBe('许岚');
+    expect(child.surname).toBe('许');
+    expect(child.hist[0].t).toBe('许岚出生');
+    expect(restored.dead.find(person => person.id === 4).name).toBe('许岚');
   });
 
   it('does not downgrade or rewrite saves from a newer family-name version', () => {
