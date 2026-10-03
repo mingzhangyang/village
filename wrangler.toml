@@ -1,0 +1,9 @@
+name = "village"
+compatibility_date = "2026-10-03"
+
+[assets]
+directory = "./dist"
+
+[[routes]]
+pattern = "village.orangely.xyz"
+custom_domain = true

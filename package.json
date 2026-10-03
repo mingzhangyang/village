@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "deploy": "wrangler deploy",
     "lint": "eslint .",
     "test": "vitest run"
   },
@@ -15,6 +16,7 @@
     "eslint": "latest",
     "globals": "latest",
     "vite": "latest",
-    "vitest": "latest"
+    "vitest": "latest",
+    "wrangler": "4.147.0"
   }
 }
