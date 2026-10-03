@@ -862,7 +862,21 @@ $('mdl').addEventListener('click',e=>{
   if(S.ch){if(!S.ch.result)chron(`放弃了挑战：${CHALLENGES[S.ch.id].n}。`,'info');S.ch=null;S.paused=false;}
   closeModal();dirty=true;updateUI();
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&mdlMode==='list')closeModal();});
+function trapDialogFocus(e,box){
+  if(e.key!=='Tab'||box.hidden)return;
+  const dlg=box.querySelector('.dlg');
+  const focusable=[...dlg.querySelectorAll('button:not([disabled]),select:not([disabled]),input:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])')]
+    .filter(el=>!el.hidden&&el.getClientRects().length);
+  if(!focusable.length){e.preventDefault();dlg.focus();return;}
+  const first=focusable[0],last=focusable[focusable.length-1],active=document.activeElement;
+  if(e.shiftKey&&(active===first||active===dlg)){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&active===last){e.preventDefault();first.focus();}
+}
+document.addEventListener('keydown',e=>{
+  const active=!$('dlg').hidden?$('dlg'):!$('mdl').hidden?$('mdl'):null;
+  if(active)trapDialogFocus(e,active);
+  if(e.key==='Escape'&&mdlMode==='list'&&!$('mdl').hidden)closeModal();
+});
 function renderGoal(){
   const c=S.ch;$('goal').hidden=!c;if(!c)return;
   const C=CHALLENGES[c.id];setT('gName',`挑战：${C.n}`);
