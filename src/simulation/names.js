@@ -18,7 +18,8 @@ export function knownPersonSurname(person) {
 }
 
 export function personSurname(person) {
-  return knownPersonSurname(person) || fallbackSurname(person?.id);
+  if (!person) return null;
+  return knownPersonSurname(person) || fallbackSurname(person.id);
 }
 
 export function givenNameFromDisplayName(name) {
