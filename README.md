@@ -35,7 +35,7 @@ npm run build
 ## 工程结构
 
 - `src/main.js`：界面、DOM 事件和应用组装。
-- `src/simulation/`：状态、时间、人口关系、经济 tick 和挑战期限规则。
+- `src/simulation/`：状态、时间、可复现随机流、人口关系、经济 tick 和挑战期限规则。
 - `src/world/map.js`：固定的世界布局。
 - `src/storage/index.js`：可注入 `Storage` 的 Save System v2 实现；浏览器 key 与 schema 保持兼容。
 - `index.html`、`styles.css`：页面结构和样式。
@@ -46,6 +46,7 @@ npm run build
 
 - 自由世界最多保留 5 个存档槽。
 - 存档仍保存在当前浏览器的 `localStorage` 中；换设备或清除网站数据不会自动同步。
+- 每个世界保存自己的模拟 seed 和随机流位置；旧存档首次加载时会从现有状态派生固定 seed。
 - “导出当前”会生成可备份的 JSON 文件，“导入存档”始终创建新槽，不会覆盖现有存档。
 - 旧的 `hejing-save-v1` 会在首次运行时自动迁移到 v2；迁移成功后才删除旧 key。
 - 挑战保存在独立的 `hejing-challenge-v2` 中，结束或放弃后可以回到挑战前的自由世界。
