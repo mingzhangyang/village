@@ -1,3 +1,5 @@
+import { MAX_PERSON_NAME_LENGTH } from '../state-contract.js';
+
 export function createHejingStorage(store) {
   if (!store) throw new Error('A Storage-compatible object is required.');
 
@@ -24,7 +26,7 @@ function cleanName(name,fallback){
   return value||fallback||'未命名溪谷';
 }
 function validState(state){
-  const peopleOk=Array.isArray(state&&state.people)&&state.people.every(p=>p&&typeof p==='object'&&Number.isFinite(p.id)&&typeof p.name==='string'&&p.name.length<=100&&Number.isFinite(p.age));
+  const peopleOk=Array.isArray(state&&state.people)&&state.people.every(p=>p&&typeof p==='object'&&Number.isFinite(p.id)&&typeof p.name==='string'&&p.name.length<=MAX_PERSON_NAME_LENGTH&&Number.isFinite(p.age));
   return !!state&&typeof state==='object'&&state.v===1&&Number.isFinite(state.day)&&state.day>=0&&peopleOk&&
     Array.isArray(state.dead)&&Array.isArray(state.built)&&state.hist&&typeof state.hist==='object';
 }

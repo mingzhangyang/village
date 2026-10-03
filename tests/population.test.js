@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { changeRel, makePerson, remove, seedPopulation, setRel, uniqueName } from '../src/simulation/population.js';
-import { givenNameFromDisplayName, surnameFromName } from '../src/simulation/names.js';
+import { givenNameFromDisplayName, migratedFamilyName, surnameFromName } from '../src/simulation/names.js';
 import { newState, setState } from '../src/simulation/state.js';
+import { MAX_PERSON_NAME_LENGTH } from '../src/state-contract.js';
 
 afterEach(() => {
   setState(null);
@@ -80,6 +81,22 @@ describe('population', () => {
     expect(inheritedRngState).toBe(legacy.rngState);
     expect(inheritedName.startsWith(inheritedSurname)).toBe(true);
     expect(inheritedName).not.toBe(inheritedCandidate);
+  });
+
+  it('keeps migrated names within the storage limit while resolving collisions', () => {
+    const person = {
+      id: 37,
+      name: `林${'岚'.repeat(MAX_PERSON_NAME_LENGTH - 1)}`,
+    };
+    const used = new Set();
+
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const name = migratedFamilyName(person, '许', used);
+      expect(name.length).toBeLessThanOrEqual(MAX_PERSON_NAME_LENGTH);
+      expect(name.startsWith('许')).toBe(true);
+      expect(used.has(name)).toBe(false);
+      used.add(name);
+    }
   });
 
   it('does not treat a lone mother as a father when creating a child', () => {
