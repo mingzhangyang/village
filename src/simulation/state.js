@@ -71,7 +71,6 @@ function rewriteRenamedResidents(state, originalNames) {
 
   for (const person of everyone) {
     if (!Array.isArray(person.hist)) continue;
-    const before = originalNames.get(person);
     // A resident's own history treats its old display name as a self-reference,
     // even when another legacy resident reused the same display name.
     const replacements = replacementsForResidents([person]);
