@@ -997,7 +997,8 @@ const DILEMMAS={
   }
 };
 function maybeDilemma(){
-  if(!S.dilemmasOn||S.pending||S.day<S.nextDilemma||!S.people.length)return;  const c=[];
+  if(!S.dilemmasOn||S.pending||S.day<S.nextDilemma||!S.people.length)return;
+  const c=[];
   for(const k in DILEMMAS){if(k===S.lastDil)continue;const d=DILEMMAS[k].when();if(d)c.push([k,d,k==='levy'?3:k==='sick'?2:1]);}
   if(!c.length){S.nextDilemma=S.day+5;return;}
   let x=Math.random()*c.reduce((t,e)=>t+e[2],0);
