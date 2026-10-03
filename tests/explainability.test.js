@@ -44,7 +44,7 @@ describe('explainability', () => {
 
     expect(result.rawTarget).toBeCloseTo(89.5, 10);
     expect(factorSum).toBeCloseTo(result.rawTarget, 10);
-    expect(result.factors).toEqual([
+    const expectedFactors = [
       { key: 'base', value: 30 },
       { key: 'wealth', value: 21 },
       { key: 'food', value: -6 },
@@ -61,7 +61,11 @@ describe('explainability', () => {
       { key: 'public', value: 4 },
       { key: 'market', value: 4 },
       { key: 'teahouse', value: 2 },
-    ]);
+    ];
+    expect(result.factors.map(factor => factor.key)).toEqual(expectedFactors.map(factor => factor.key));
+    result.factors.forEach((factor, index) => {
+      expect(factor.value).toBeCloseTo(expectedFactors[index].value, 10);
+    });
     expect(state).toEqual(beforeState);
     expect(person).toEqual(beforePerson);
   });
