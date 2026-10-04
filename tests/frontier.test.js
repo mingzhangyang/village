@@ -100,7 +100,7 @@ describe('the pioneer phase', () => {
     const team = launchExpedition(state);
     const origins = { ...state.frontier.origin };
     const adults = islandAdults(state);
-    for (const p of adults.slice(0, adults.length - FRONTIER.minAdults + 1)) remove(p, 'left');
+    for (const p of adults.slice(0, adults.length - FRONTIER.minAdults + 1)) p.health = 0;
     const result = frontierTick(state);
     expect(result.event).toBe('failed');
     expect(state.frontier.stage).toBe('failed');
@@ -160,7 +160,7 @@ describe('the pioneer phase', () => {
     };
     together();
     for (const p of team) expect(p.home).toBeLessThan(MAP.V[ISLE].slots.length);
-    for (const p of islandAdults(state).slice(0, -FRONTIER.minAdults + 1)) remove(p, 'left');
+    for (const p of islandAdults(state).slice(0, -FRONTIER.minAdults + 1)) p.health = 0;
     frontierTick(state);
     expect(state.frontier.stage).toBe('failed');
     together();
@@ -184,7 +184,7 @@ describe('the pioneer phase', () => {
       expect([p.tx, p.ty]).toEqual([h.i, h.j]);
     }
     const adults = islandAdults(state);
-    for (const p of adults.slice(0, adults.length - FRONTIER.minAdults + 1)) remove(p, 'left');
+    for (const p of adults.slice(0, adults.length - FRONTIER.minAdults + 1)) p.health = 0;
     frontierTick(state);
     for (const p of team.filter(q => state.people.includes(q))) {
       expect(p.village).not.toBe(ISLE);
