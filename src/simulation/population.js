@@ -127,7 +127,7 @@ export function remove(p,status,cause){
   p.status=status;p.endDay=S.day;p.cause=cause||'';
   if(status==='dead'){
     S.deaths++;
-    const msg=cause==='寿终'?`在${ageY(p)}岁时安详离世`:cause==='饥饿'?'在饥饿中离世':'因疫病离世';
+    const msg=cause==='寿终'?`在${ageY(p)}岁时安详离世`:cause==='饥饿'?'在饥饿中离世':cause==='风暴'?'在南屿风暴中遇难':'因疫病离世';
     log(p,msg);chron(`${p.name}${msg}。`,'death');notify(p,msg);
     if(cause==='饥饿'){S.hungerDeaths++;S.lastHunger=p.name;}
   }else if(cause==='wander'){S.left++;S.lastLeft=p.name;notify(p,'离开溪谷，去外面闯荡了');log(p,'带着大家的祝福，离开溪谷去外面闯荡');chron(`${p.name} 离开溪谷，去外面闯荡了。`,'leave');}

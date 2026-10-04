@@ -33,6 +33,8 @@ export const isSettled=state=>frontierStage(state)==='settled';
 export const isPioneering=state=>frontierStage(state)==='pioneer';
 // 开荒期的南屿居民不能通过普通迁徙、出走等路径离开；返乡只能走远征专用流程。
 export const canDepart=(state,p)=>!(isPioneering(state)&&p.village===ISLE);
+// 开荒期海峡是现实边界：两个人只有在同一侧时才能发生需要见面的互动（结伴、生育等）。
+export const canInteract=(state,a,b)=>!isPioneering(state)||(a.village===ISLE)===(b.village===ISLE);
 // 地图上能看见南屿：掌握远洋航路之后，或已经出发过。
 export const isleVisible=state=>hasTech(state,FRONTIER.tech)||!!frontierStage(state);
 // 移民、建造、两难抉择等可以选到的聚落。
@@ -146,7 +148,11 @@ export function frontierTick(state){
   const f=state.frontier,elapsed=state.day-f.start;
   let storm=null;
   if(random()<FRONTIER.stormChance){
-    for(const p of islanders(state)){p.health-=rand(8,22);p.happiness=clamp(p.happiness-6,0,100);log(p,'在南屿遇上了一场大风暴');}
+    for(const p of islanders(state)){
+      const before=p.health;
+      p.health-=rand(8,22);p.happiness=clamp(p.happiness-6,0,100);log(p,'在南屿遇上了一场大风暴');
+      if(before>0&&p.health<=0)p.fatalCause='风暴';
+    }
     storm={event:'storm',text:'一场风暴扑向南屿，开拓者的窝棚被掀翻了好几间。'};
   }
   const adults=islandAdults(state).length;
@@ -170,7 +176,8 @@ export function returnHome(state,p,origin=(state.frontier&&state.frontier.origin
 
 export function failExpedition(state,why){
   const f=state.frontier,origin=f.origin||{};
-  const back=islanders(state);
+  // 只把仍然活着的人送回去；当日刚死亡的人留给同一 tick 的统一死亡流程处理。
+  const back=islanders(state).filter(p=>p.health>0);
   for(const p of back){
     returnHome(state,p,origin);p.happiness=clamp(p.happiness-10,0,100);
     log(p,'远征失败，垂头丧气地回到了故乡');

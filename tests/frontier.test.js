@@ -5,7 +5,7 @@ import { configureEconomy, tick } from '../src/simulation/economy.js';
 import { chooseJob, homeTile, makePerson, seedPopulation, remove } from '../src/simulation/population.js';
 import { newState, normalizeState, setState } from '../src/simulation/state.js';
 import {
-  FRONTIER, activeVillages, canDepart, canMine, expeditionChecks, expeditionReady, frontierTick, hardshipFor, islandAdults,
+  FRONTIER, activeVillages, canDepart, canInteract, canMine, expeditionChecks, expeditionReady, frontierTick, hardshipFor, islandAdults,
   isVolunteer, isleVisible, launchExpedition, pickSettlers, retryLeft, workFactor,
 } from '../src/simulation/frontier.js';
 
@@ -118,7 +118,7 @@ describe('the pioneer phase', () => {
     expect(state.frontier.stage).toBe('failed');
     expect(retryLeft(state)).toBe(FRONTIER.retryDays);
     expect(expeditionChecks(state).find(c => c.k === 'retry').ok).toBe(false);
-    for (const p of team.filter(q => q.status === 'alive')) expect(p.village).toBe(origins[p.id]);
+    for (const p of team.filter(q => q.status === 'alive' && q.health > 0)) expect(p.village).toBe(origins[p.id]);
   });
 
   it('brings the young children of every qualified adult, partners included', () => {
@@ -160,13 +160,24 @@ describe('the pioneer phase', () => {
     expect(state.people).not.toContain(pioneer);
   });
 
+  it('treats the sea as one shared interaction boundary during pioneering', () => {
+    const state = readyWorld();
+    const team = launchExpedition(state);
+    const pioneer = team.find(p => p.job !== 'child');
+    const mainlander = state.people.find(p => p.village !== ISLE && p.job !== 'child');
+    const islandMate = team.find(p => p !== pioneer && p.job !== 'child');
+    expect(canInteract(state, pioneer, mainlander)).toBe(false);
+    expect(canInteract(state, pioneer, islandMate)).toBe(true);
+    state.frontier = { stage: 'settled', day: state.day, tries: 1 };
+    expect(canInteract(state, pioneer, mainlander)).toBe(true);
+  });
   it('keeps each family under one roof on the islet and back home', () => {
     const state = readyWorld();
     const team = launchExpedition(state);
     const ids = new Set(team.map(p => p.id));
     const together = () => {
-      const alive = id => ids.has(id) && state.people.find(q => q.id === id);
-      for (const p of team.filter(q => state.people.includes(q))) {
+      const alive = id => ids.has(id) && state.people.find(q => q.id === id && q.health > 0);
+      for (const p of team.filter(q => state.people.includes(q) && q.health > 0)) {
         for (const id of [p.partner, ...p.parents]) if (alive(id)) expect(alive(id).home, p.name).toBe(p.home);
       }
     };
@@ -188,6 +199,17 @@ describe('the pioneer phase', () => {
     expect(frontierTick(state).event).toBe('failed');
   });
 
+  it('returns only surviving settlers when casualties cause expedition failure', () => {
+    const state = readyWorld();
+    const team = launchExpedition(state);
+    const adults = islandAdults(state);
+    const casualties = adults.slice(0, adults.length - FRONTIER.minAdults + 1);
+    for (const p of casualties) p.health = 0;
+    const result = frontierTick(state);
+    expect(result.event).toBe('failed');
+    for (const p of casualties) expect(p.village).toBe(ISLE);
+    for (const p of team.filter(q => q.health > 0)) expect(p.village).not.toBe(ISLE);
+  });
   it('sends settlers and returnees walking straight to their new homes', () => {
     const state = readyWorld();
     const team = launchExpedition(state);
@@ -198,7 +220,7 @@ describe('the pioneer phase', () => {
     const adults = islandAdults(state);
     for (const p of adults.slice(0, adults.length - FRONTIER.minAdults + 1)) p.health = 0;
     frontierTick(state);
-    for (const p of team.filter(q => state.people.includes(q))) {
+    for (const p of team.filter(q => state.people.includes(q) && q.health > 0)) {
       expect(p.village).not.toBe(ISLE);
       const h = homeTile(p);
       expect([p.tx, p.ty]).toEqual([h.i, h.j]);

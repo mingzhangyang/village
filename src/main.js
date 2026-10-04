@@ -233,7 +233,7 @@ const DILEMMAS={
         for(const p of ps){p.happiness=clamp(p.happiness-6,0,100);for(const q of ps)if(q.id>p.id)changeRel(p,q,12);}
         return '开拓者们挤在一个窝棚里熬过了难关，彼此成了过命的交情。';}},
       {t:'接回病弱的人',h:'开荒期唯一能离岛的机会：健康低于 50 的人回到故乡，岛上人手会变少',go(){
-        const back=islanders(S).filter(p=>p.health<50);
+        const back=islanders(S).filter(p=>p.health>0&&p.health<50);
         if(!back.length)return '岛上没有病得太重的人，大家决定一起撑下去。';
         for(const p of back){returnHome(S,p);log(p,'病倒后被接回了故乡');assignTarget(p);}
         computeHouses();
@@ -1093,8 +1093,10 @@ cv.addEventListener('focus',()=>{
 cv.addEventListener('keydown',e=>{
   if(!kbTile)kbTile=MAP.V.grain.center;
   if(e.key.startsWith('Arrow')){
+    // 即使已经到地图边缘，也要接管方向键，避免页面滚动把地图焦点操作打断。
+    e.preventDefault();
     const next=moveKeyboardTile(MAP,kbTile,e.key,kbVisible);
-    if(next!==kbTile){e.preventDefault();kbTile=next;syncKeyboardTile();}
+    if(next!==kbTile){kbTile=next;syncKeyboardTile();}
     return;
   }
   if(e.key==='Enter'||e.key===' '){

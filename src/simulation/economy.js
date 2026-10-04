@@ -1,5 +1,5 @@
 import { MAP, ISLE, ALL_VKEYS } from '../world/map.js';
-import { workFactor, hardshipFor, frontierBirthCap, frontierTick, isPioneering, canDepart, canMine } from './frontier.js';
+import { workFactor, hardshipFor, frontierBirthCap, frontierTick, isPioneering, canDepart, canInteract, canMine } from './frontier.js';
 import { JOBS } from './constants.js';
 import { YEAR, seasonIndex, ageY } from './clock.js';
 import { random, rand, pick, clamp, has } from './random.js';
@@ -209,7 +209,7 @@ export function tick(){
       if(p.rel[k]<70)continue;const q=living(+k);
       if(!q||q.partner||q.gender===p.gender||q.age<18*YEAR||q.age>50*YEAR)continue;
       if(p.parents.includes(q.id)||q.parents.includes(p.id)||p.parents.some(x=>q.parents.includes(x)))continue;
-      if(isPioneering(S)&&(p.village===ISLE)!==(q.village===ISLE))continue; // 开荒期间不能往返南屿
+      if(!canInteract(S,p,q))continue; // 开荒期间隔海的人不能结伴
       p.partner=q.id;q.partner=p.id;
       if(p.village!==q.village){const mv=p.happiness<q.happiness?p:q,st=mv===p?q:p;mv.village=st.village;mv.home=st.home;log(mv,`搬到了${MAP.V[st.village].n}`);}
       else q.home=p.home;
@@ -222,7 +222,7 @@ export function tick(){
   const fd=S.food/totalNeed;
   for(const m of [...P]){
     if(m.gender!=='女'||!m.partner||m.age<18*YEAR||m.age>42*YEAR||S.day-m.lastBirth<60)continue;
-    const f=living(m.partner);if(!f)continue;
+    const f=living(m.partner);if(!f||!canInteract(S,m,f))continue;
     if(fd<15||(m.happiness+f.happiness)/2<50)continue;
     if(random()>0.012*(P.length<60+techBonus(S,'birthCap')+frontierBirthCap(S)?1:0.3))continue;
     m.lastBirth=S.day;
@@ -233,19 +233,20 @@ export function tick(){
     S.births++;chron(`${f.name} 与 ${m.name} 的孩子 ${c.name} 出生了。`,'birth');
   }
 
+  // 先推进远征：风暴造成的当日伤亡随后立即走统一死亡流程，不会被当作返乡者。
+  const frontier=frontierTick(S);
+  if(frontier)chron(frontier.text,frontier.event==='failed'?'leave':'event');
+
   // 离世与离开
   for(const p of [...P]){
     let cause=null;
-    if(p.health<=0)cause=p.hungerDays>2?'饥饿':'疫病';
+    if(p.health<=0)cause=p.fatalCause||(p.hungerDays>2?'饥饿':'疫病');
     else if(p.age>58*YEAR&&random()<0.0006*(ageY(p)-57))cause='寿终';
     if(cause){remove(p,'dead',cause);continue;}
     const migration=migrationBreakdown(p);
     if(migration.automaticEligible&&canDepart(S,p)&&random()<migration.dailyChance)remove(p,'left');
   }
   if(!P.length){chron('最后一个人也离开了。溪谷重归寂静。','death');S.paused=true;return;}
-  const frontier=frontierTick(S);
-  if(frontier)chron(frontier.text,frontier.event==='failed'?'leave':'event');
-
   // 改行
   const wk=P.filter(isWorker),avgInc=wk.length?wk.reduce((t,p)=>t+p.lastIncome,0)/wk.length:0;
   const fd2=foodDays();
