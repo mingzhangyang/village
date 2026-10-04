@@ -4,12 +4,13 @@ import { YEAR, SEASON, SEASONS, ageY, seasonIndex, dateLabel } from './simulatio
 import { JOBS, POLICIES } from './simulation/constants.js';
 import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
 import { pickUi } from './ui/random.js';
+import { describeTile, describeVillage } from './ui/inspect.js';
 import { bindContext, hx, mix, shade, rgba, poly, rrect, hash, drawSea, buildTerrain, drawWaterFx, drawTree, drawHouse, drawMountain, drawMine, drawFountain, drawBuilding, drawPerson, drawSparkle, drawGlows, drawWeather, drawVignette } from './ui/scene.js';
 import { newState, normalizeState, setState, configureState } from './simulation/state.js';
 import { configureEconomy, pushHist, tick } from './simulation/economy.js';
 import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './simulation/explainability.js';
 import { createChallenges } from './simulation/challenges.js';
-import { BUILDS, UPGRADES, buildingStats, statOf, totalBonus, granaryCapacity, investedCost, levelOf, levelName, nextUpgrade, upgradeBlock, upgradeBuilding } from './simulation/buildings.js';
+import { BUILDS, buildingStats, statOf, totalBonus, granaryCapacity, investedCost, levelOf, levelName, upgradeBlock, upgradeBuilding } from './simulation/buildings.js';
 import { FRONTIER, frontierStage, isSettled, isPioneering, isleVisible, activeVillages, islanders, islandAdults, islandMorale, expeditionChecks, expeditionReady, pickSettlers, launchExpedition, returnHome, retryLeft, hardshipFor } from './simulation/frontier.js';
 import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, researchStall, techNeeds, startResearch, cancelResearch } from './simulation/tech.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
@@ -368,12 +369,6 @@ function upgrade(t){
   const from=levelName(b),U=upgradeBuilding(S,b);applyBuilt();
   chron(`${VN(b.v)}的${from}扩建成了${U.n}，花去公库 ${U.cost} 金。`,'choice');
   toast(`${VN(b.v)}的${from}升级为${U.n}：${U.d}`);dirty=true;updateUI();
-}
-function buildingInfo(b){
-  const U=nextUpgrade(b),lv=levelOf(b);
-  const now=lv>1?`${UPGRADES[b.b][lv-1].d}。`:BUILDS[b.b].d;
-  const next=U?`可升级为${U.n}（${U.cost} 金${U.tech?`，需${TECHS[U.tech].n}`:''}）。`:'已是最高等级。';
-  return `${VN(b.v)}的${levelName(b)}（${lv} 级）：${now}${next}`;
 }
 function relocate(p,v){
   if(!p)return;
@@ -768,13 +763,13 @@ function draw(now){
   drawVignette(w,h,dark);
   // 聚落名
   ctx.font=`600 ${tw<28?10.5:12}px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif`;ctx.textBaseline='middle';
-  const tags=[];
+  const tags=[];labelHits.length=0;
   for(const k of showIsle?ALL_VKEYS:VKEYS){
     const V=MAP.V[k],[x,y0]=iso(V.center.i,V.center.j),y=y0-tw*1.15;
     const cnt=S.people.filter(p=>p.village===k).length;
     const txt=k!==ISLE||isSettled(S)?`${V.n} ${cnt}人`:isPioneering(S)?`${V.n} 开荒中 ${cnt}人`:`${V.n} · 待开拓`;
     const tw2=ctx.measureText(txt).width,bw=tw2+24,bh=tw<28?19:22;
-    const hl=dragGhost&&dragGhost.v===k;tags.push([x-bw/2,y-bh/2,bw,bh+5]);
+    const hl=dragGhost&&dragGhost.v===k;tags.push([x-bw/2,y-bh/2,bw,bh+5]);labelHits.push([k,x-bw/2,y-bh/2,bw,bh+5]);
     ctx.save();ctx.shadowColor=dark?'rgba(0,0,0,.45)':'rgba(40,55,30,.22)';ctx.shadowBlur=8;ctx.shadowOffsetY=2;
     ctx.fillStyle=theme.label;rrect(x-bw/2,y-bh/2,bw,bh,bh/2);ctx.fill();
     ctx.beginPath();ctx.moveTo(x-5,y+bh/2-1);ctx.lineTo(x,y+bh/2+5);ctx.lineTo(x+5,y+bh/2-1);ctx.closePath();ctx.fill();ctx.restore();
@@ -944,7 +939,7 @@ function updateUI(){
   updateStats();
   for(const s of SEEDS){s.el.disabled=!!s.dis();s.el.classList.toggle('active',!!s.on());s.stEl.textContent=s.st();}
   updateFate();updateChron();renderDilemma();
-  setT('purse',`公库 ${fmt(S.treasury)} 金`);updateTech();updateFrontier();
+  setT('purse',`公库 ${fmt(S.treasury)} 金`);updateTech();updateFrontier();if(infoTarget)renderInfo();
   renderGoal();renderAlert();
   $('play').textContent=S.paused?'继续':'暂停';
 }
@@ -1031,8 +1026,8 @@ let drag=null;
 function localPt(e){const r=cv.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
 function tileCoords(pt){const u=(pt.x-view.ox)/(view.tw/2),w=(pt.y-view.oy)/(view.tw/4);return {fi:(u+w)/2,fj:(w-u)/2};}
 function tileAt(pt){const c=tileCoords(pt);return MAP.at(Math.round(c.fi),Math.round(c.fj));}
-function hitPerson(pt){
-  const s0=Math.max(5,view.tw*0.2);let best=null,bd=Math.max(18,s0*1.6);
+function hitPerson(pt,tight){
+  const s0=Math.max(5,view.tw*0.2);let best=null,bd=tight?Math.max(5,s0*0.55):Math.max(18,s0*1.6);
   for(const p of S.people){const [x,y]=iso(p.x,p.y);const d=Math.hypot(pt.x-x,pt.y-(y-s0*0.7));if(d<bd){bd=d;best=p;}}
   return best;
 }
@@ -1065,6 +1060,63 @@ function cancelDrag(){drag=null;dragGhost=null;}
 cv.addEventListener('pointercancel',cancelDrag);
 cv.addEventListener('lostpointercapture',cancelDrag);
 cv.addEventListener('pointerleave',()=>{if(!drag)hoverPt=null;});
+/* ---------------- 点选信息卡 ---------------- */
+const labelHits=[];
+let infoTarget=null,infoReturn=null;
+// 房屋和建筑会高出地块，点它的屋顶其实落在后面的地块上，所以按绘制轮廓从前往后找。
+function spriteAt(pt){
+  const tw=view.tw,show=isleVisible(S);
+  for(let k=MAP.all.length-1;k>=0;k--){
+    const t=MAP.all[k];if(t.isle&&!show)continue;
+    if(!t.bld&&!(t.slot&&houses.has(t)))continue;
+    const [x,y]=iso(t.i,t.j),hw=tw*(t.bld?0.42:0.3);
+    if(pt.x>=x-hw&&pt.x<=x+hw&&pt.y>=y-tw*(t.bld?0.75:0.55)&&pt.y<=y+tw*0.12)return t;
+  }
+  return null;
+}
+function labelAt(pt){const h=labelHits.find(([,x,y,w,hh])=>pt.x>=x&&pt.x<=x+w&&pt.y>=y&&pt.y<=y+hh);return h?h[0]:null;}
+function infoContent(){
+  const t=infoTarget;if(!t)return null;
+  if(t.village)return describeVillage(S,t.village);
+  return describeTile(S,t.tile,{houses,built:builtAt(t.tile)});
+}
+function renderInfo(){
+  const box=$('info'),c=infoContent();
+  if(!c){box.hidden=true;infoTarget=null;return;}
+  setT('infoK',c.kicker||'');setT('infoT',c.title||'');
+  let html='';
+  if(c.rows&&c.rows.length)html+=`<dl class="info-rows">${c.rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+  if(c.people&&c.people.length)html+=`<div class="info-people">${c.people.map(p=>`<button data-person="${p.id}">${esc(p.name)}<em>${esc(p.meta)}</em></button>`).join('')}</div>`;
+  if(c.text)html+=`<p class="info-text">${esc(c.text)}</p>`;
+  if(c.actions&&c.actions.length)html+=`<div class="info-acts">${c.actions.map(a=>`<button class="btn primary" data-info="${a.act}"${a.disabled?' disabled':''}>${esc(a.label)}</button>${a.hint?`<small>${esc(a.hint)}</small>`:''}`).join('')}</div>`;
+  setH('infoB',html);
+}
+function openInfo(target,pt){
+  infoTarget=target;const box=$('info');
+  if(box.hidden)infoReturn=document.activeElement;
+  box.hidden=false;renderInfo();if(box.hidden)return;
+  const W=$('mapwrap').clientWidth,H=$('mapwrap').clientHeight,bw=box.offsetWidth,bh=box.offsetHeight;
+  let x=pt.x+14,y=pt.y-bh/2;
+  if(x+bw>W-10)x=pt.x-bw-14;
+  box.style.left=clamp(x,10,Math.max(10,W-bw-10))+'px';box.style.top=clamp(y,10,Math.max(10,H-bh-10))+'px';
+}
+function closeInfo(){
+  const box=$('info');if(box.hidden)return;
+  box.hidden=true;infoTarget=null;
+  if(infoReturn&&box.contains(document.activeElement)&&typeof infoReturn.focus==='function')infoReturn.focus({preventScroll:true});
+  infoReturn=null;
+}
+$('infoX').addEventListener('click',closeInfo);
+$('info').addEventListener('pointerdown',e=>e.stopPropagation());
+$('info').addEventListener('click',e=>{
+  const pb=e.target.closest('[data-person]');
+  if(pb){S.sel=+pb.dataset.person;updateFate();document.querySelector('.right').scrollIntoView({behavior:'smooth',block:'nearest'});return;}
+  const ab=e.target.closest('[data-info]');if(!ab||ab.disabled)return;
+  if(ab.dataset.info==='upgrade'&&infoTarget&&infoTarget.tile){upgrade(infoTarget.tile);renderInfo();}
+  else if(ab.dataset.info==='frontier'){closeInfo();openModal('frontier');}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('info').hidden&&mdlHidden()&&$('dlg').hidden)closeInfo();});
+
 function tap(pt){
   if(tool==='build'){place(tileAt(pt),buildSel);return;}
   if(tool==='raze'){raze(tileAt(pt));return;}
@@ -1074,10 +1126,16 @@ function tap(pt){
     const v=villageAtPt(pt);if(!v){toast('点一个村子附近的地方。',true);return;}
     relocate(living(moveSrc),v);moveSrc=null;return;
   }
-  const p=hitPerson(pt);
-  if(p){S.sel=p.id;$('tip').style.opacity='0';updateFate();return;}
+  const v=labelAt(pt);
+  if(v){$('tip').style.opacity='0';openInfo({village:v},pt);return;}
+  // 正点中小人就选人；否则看是不是点在房屋或建筑的轮廓上；再宽松地找附近的小人；最后才是地面。
+  const pick=p=>{S.sel=p.id;$('tip').style.opacity='0';closeInfo();updateFate();};
+  const direct=hitPerson(pt,true);if(direct){pick(direct);return;}
+  const sp=spriteAt(pt);if(sp){$('tip').style.opacity='0';openInfo({tile:sp},pt);return;}
+  const near=hitPerson(pt);if(near){pick(near);return;}
   const t=tileAt(pt);
-  const b=builtAt(t);if(b)toast(buildingInfo(b));
+  if(!t||(t.isle&&!isleVisible(S))){closeInfo();return;}
+  $('tip').style.opacity='0';openInfo({tile:t},pt);
 }
 const HINTS={
   look:'',
@@ -1087,7 +1145,7 @@ const HINTS={
   upgrade:'点一座亮起来的建筑把它升一级。第 2 级只要花钱；第 3 级还要先掌握对应的技术：常平仓要腌藏晒干，井亭药庐要草药医术，商行要记账算学，书院茶社要雕版印书。'
 };
 function setTool(t){
-  tool=t;moveSrc=null;dragGhost=null;
+  tool=t;moveSrc=null;dragGhost=null;closeInfo();
   document.querySelectorAll('#tools button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
   $('palette').hidden=t!=='build';
   const h=typeof HINTS[t]==='function'?HINTS[t]():HINTS[t];
@@ -1160,7 +1218,7 @@ function installState(raw,fresh){
     pushHist();
   }
   applyBuilt();
-  colorKey='';terrainGen++;lastChron=-1;frontierKey='';for(const k in _c)delete _c[k];
+  closeInfo();colorKey='';terrainGen++;lastChron=-1;frontierKey='';for(const k in _c)delete _c[k];
   computeHouses();syncControls();dirty=true;updateUI();
 }
 function init(fresh){
