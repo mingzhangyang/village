@@ -255,8 +255,10 @@ export function tick(){
   });
   S.cohesion=clamp(S.cohesion+(cohesionWhy.target-S.cohesion)*0.04,0,100);
 
-  const done=advanceResearch(S,P.filter(isWorker).length);
-  if(done)chron(`溪谷掌握了${TECHS[done].n}：${TECHS[done].h}。`,'event');
+  const rs=advanceResearch(S);
+  if(rs&&rs.done)chron(`溪谷掌握了${TECHS[rs.done].n}：${TECHS[rs.done].h}。`,'event');
+  else if(rs&&rs.stalled)chron(`${TECHS[rs.stalled].n}的研究停了下来：${rs.why}。`,'info');
+  else if(rs&&rs.resumed)chron(`${TECHS[rs.resumed].n}的研究又重新开始了。`,'info');
 
   pushHist();
   for(const p of P)if(random()<0.4)assignTarget(p);

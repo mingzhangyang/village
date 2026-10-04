@@ -4,13 +4,24 @@ import { seedPopulation } from '../src/simulation/population.js';
 import { newState, normalizeState, setState } from '../src/simulation/state.js';
 import {
   TECHS, TECH_KEYS, SHIP_INTERVAL, advanceResearch, cancelResearch, era, hasTech,
-  researchBlock, researchRate, startResearch, techBonus, techCount, techMult,
+  researchBlock, researchRate, researchStall, startResearch, techBonus, techCount, techMult, techNeeds,
 } from '../src/simulation/tech.js';
 
 afterEach(() => {
   setState(null);
   configureEconomy({});
 });
+
+let nextId = 1000;
+function hire(state, job, n, skill) {
+  const hired = [];
+  for (let k = 0; k < n; k += 1) {
+    const p = { id: nextId++, job, skill, age: 30, village: 'bay', happiness: 60 };
+    state.people.push(p);
+    hired.push(p);
+  }
+  return hired;
+}
 
 function seededWorld(seed, setup = () => {}) {
   const state = newState(seed);
@@ -39,27 +50,42 @@ describe('development tree rules', () => {
     }
   });
 
-  it('blocks research on prerequisites, world conditions and treasury', () => {
+  it('blocks research on prerequisites, real-world needs and treasury', () => {
     const state = newState(2);
     state.treasury = 1000;
     expect(researchBlock(state, 'iron')).toContain('轮作休耕');
     state.tech.rotation = 0;
-    expect(researchBlock(state, 'iron')).toContain('矿脉');
+    expect(researchBlock(state, 'iron')).toContain('已发现矿脉');
     state.mine = true;
+    expect(researchBlock(state, 'iron')).toContain('矿工');
+    hire(state, 'miner', 2, 35);
+    hire(state, 'woodcutter', 2, 39);
+    expect(researchBlock(state, 'iron')).toContain('樵夫');
+    hire(state, 'woodcutter', 2, 40);
     expect(researchBlock(state, 'iron')).toBe('');
     state.treasury = 10;
     expect(researchBlock(state, 'iron')).toContain('公库');
     state.tech.iron = 0;
     state.treasury = 1000;
-    expect(researchBlock(state, 'waterwheel')).toContain('水渠');
-    state.canal = true;
-    expect(researchBlock(state, 'waterwheel')).toBe('');
+    expect(researchBlock(state, 'waterwheel')).toContain('已修水渠');
     expect(researchBlock(state, 'rotation')).toBe('已经掌握。');
+  });
+
+  it('lists every need with what the village has now', () => {
+    const state = newState(2);
+    hire(state, 'merchant', 3, 50);
+    const rows = techNeeds(state, 'ledger');
+    expect(rows.map(r => r.ok)).toEqual([true, false]);
+    expect(rows[0].have).toBe('3 位');
+    state.built.push({ b: 'market', v: 'bay', i: 0, j: 0 });
+    expect(techNeeds(state, 'ledger').every(r => r.ok)).toBe(true);
   });
 
   it('charges on start, allows one project at a time and refunds half on cancel', () => {
     const state = newState(3);
     state.treasury = 200;
+    hire(state, 'farmer', 3, 40);
+    hire(state, 'fisher', 2, 40);
     expect(startResearch(state, 'rotation')).toBe(true);
     expect(state.treasury).toBe(160);
     expect(startResearch(state, 'nets')).toBe(false);
@@ -69,30 +95,55 @@ describe('development tree rules', () => {
     expect(state.research).toBeNull();
   });
 
-  it('research speed grows with workers, the school and printing', () => {
+  it('research speed grows with experts, the school and printing, and slows in hard times', () => {
     const state = newState(4);
-    expect(researchRate(state, 0)).toBeCloseTo(0.5);
-    expect(researchRate(state, 15)).toBeCloseTo(1);
-    expect(researchRate(state, 40)).toBeCloseTo(1);
+    hire(state, 'farmer', 3, 40);
+    state.food = 1000;
+    expect(researchRate(state, 'rotation')).toBeCloseTo(0.8);
+    hire(state, 'farmer', 3, 40);
+    expect(researchRate(state, 'rotation')).toBeCloseTo(1);
     state.school = true;
-    expect(researchRate(state, 15)).toBeCloseTo(1.25);
+    expect(researchRate(state, 'rotation')).toBeCloseTo(1.25);
     state.tech.printing = 0;
-    expect(researchRate(state, 15)).toBeCloseTo(1.625);
+    expect(researchRate(state, 'rotation')).toBeCloseTo(1.625);
+    state.drought = 5;
+    expect(researchRate(state, 'rotation')).toBeCloseTo(0.8125);
   });
 
   it('completes research once enough work accumulates', () => {
     const state = newState(5);
     state.treasury = 100;
+    state.food = 1000;
     state.day = 77;
+    hire(state, 'fisher', 4, 40);
     startResearch(state, 'nets');
-    let done = null;
-    for (let day = 0; day < TECHS.nets.days - 1; day += 1) done = advanceResearch(state, 15);
-    expect(done).toBeNull();
-    done = advanceResearch(state, 15);
-    expect(done).toBe('nets');
+    let result = null;
+    for (let day = 0; day < TECHS.nets.days - 1; day += 1) result = advanceResearch(state);
+    expect(result).toBeNull();
+    expect(advanceResearch(state)).toEqual({ done: 'nets' });
     expect(state.tech.nets).toBe(77);
     expect(state.research).toBeNull();
     expect(era(state)).toBe('开垦');
+  });
+
+  it('stalls when experts are gone or famine strikes, and resumes later', () => {
+    const state = newState(6);
+    state.treasury = 100;
+    state.food = 1000;
+    const fishers = hire(state, 'fisher', 2, 40);
+    startResearch(state, 'nets');
+    advanceResearch(state);
+    const before = state.research.prog;
+    fishers[0].job = 'farmer';
+    expect(advanceResearch(state)).toEqual({ stalled: 'nets', why: expect.stringContaining('渔民') });
+    expect(advanceResearch(state)).toBeNull();
+    expect(state.research.prog).toBe(before);
+    expect(researchStall(state)).toContain('渔民');
+    fishers[0].job = 'fisher';
+    expect(advanceResearch(state)).toEqual({ resumed: 'nets' });
+    expect(state.research.prog).toBeGreaterThan(before);
+    state.food = 0;
+    expect(researchStall(state)).toContain('饥荒');
   });
 
   it('sums effects of learned techs', () => {
@@ -114,7 +165,7 @@ describe('development tree rules', () => {
     });
     expect(state.tech).toEqual({ rotation: 12 });
     expect(state.research).toBeNull();
-    expect(normalizeState({ v: 1, seed: 9, research: { id: 'nets', prog: 4 } }).research).toEqual({ id: 'nets', prog: 4 });
+    expect(normalizeState({ v: 1, seed: 9, research: { id: 'nets', prog: 4 } }).research).toEqual({ id: 'nets', prog: 4, stalled: false });
     expect(normalizeState({ v: 1, seed: 9, research: { id: 'nope', prog: 4 } }).research).toBeNull();
     expect(normalizeState({ v: 1, seed: 9, tech: [1, 2] }).tech).toEqual({});
   });
@@ -134,7 +185,12 @@ describe('development tree in the simulation', () => {
   });
 
   it('advances the active project each day and announces completion', () => {
-    const state = seededWorld(32, s => { s.treasury = 500; startResearch(s, 'ledger'); });
+    const state = seededWorld(32, s => {
+      s.treasury = 500;
+      s.people.filter(p => p.job !== 'child' && p.job !== 'elder').slice(0, 4).forEach(p => { p.job = 'merchant'; p.skill = 60; });
+      s.built.push({ b: 'market', v: 'bay', i: 0, j: 0 });
+      expect(startResearch(s, 'ledger')).toBe(true);
+    });
     for (let day = 0; day < 60 && state.research; day += 1) tick();
     expect(hasTech(state, 'ledger')).toBe(true);
     expect(state.chron.some(entry => entry.t.includes('记账算学'))).toBe(true);

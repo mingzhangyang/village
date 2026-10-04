@@ -11,7 +11,7 @@ import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, mi
 import { createChallenges } from './simulation/challenges.js';
 import { BUILDS, UPGRADES, buildingStats, statOf, totalBonus, granaryCapacity, investedCost, levelOf, levelName, nextUpgrade, upgradeBlock, upgradeBuilding } from './simulation/buildings.js';
 import { FRONTIER, frontierStage, isSettled, isPioneering, isleVisible, activeVillages, islanders, islandAdults, islandMorale, expeditionChecks, expeditionReady, pickSettlers, launchExpedition, returnHome, retryLeft, hardshipFor } from './simulation/frontier.js';
-import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, startResearch, cancelResearch } from './simulation/tech.js';
+import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, researchStall, techNeeds, startResearch, cancelResearch } from './simulation/tech.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
 
 const $=id=>document.getElementById(id);
@@ -511,31 +511,40 @@ function renderGoal(){
 }
 
 /* ---------------- 发展图谱 ---------------- */
-const workerCount=()=>S.people.filter(isWorker).length;
 function researchEta(){
   const r=S.research;if(!r)return 0;
-  const rate=researchRate(S,workerCount());
+  const rate=researchRate(S);
   return rate>0?Math.ceil((TECHS[r.id].days-r.prog)/rate):0;
 }
+// 一项技术的全部门槛：前置技术、现实条件、费用。
+function techRows(id){
+  const T=TECHS[id];
+  return [
+    ...T.req.map(r=>({ok:hasTech(S,r),label:`掌握${TECHS[r].n}`,have:hasTech(S,r)?'已掌握':'未掌握'})),
+    ...techNeeds(S,id),
+    {ok:S.treasury>=T.cost,label:`公库 ${T.cost} 金`,have:`${Math.floor(S.treasury)} 金`}
+  ];
+}
 function renderTechModal(){
-  const n=techCount(S),r=S.research,rate=researchRate(S,workerCount());
+  const n=techCount(S),r=S.research;
   $('mdlK').textContent='发展图谱';$('mdlK').style.color='';
   $('mdlT').textContent=`${era(S)}时期 · 已掌握 ${n}/${TECH_KEYS.length} 项`;
-  $('mdlX').textContent=`从公库拿钱立项，研究需要一些日子。劳力越多、办了学堂，进度越快；现在每日推进 ${rate.toFixed(2)} 日的工作量。同一时间只能研究一项，中途放弃退回一半费用。`;
+  $('mdlX').textContent='光有钱不够：每项技术都要有够格的行家，有的还要设施、学堂或民心。立项后这些条件也要一直保持，行家离开、改行或闹饥荒，研究就会停下。够格的行家越多进度越快，学堂和印书也能加速，旱灾和疫病会拖慢。同一时间只能研究一项，中途放弃退回一半费用。';
   let html='';
   if(r){
-    const T=TECHS[r.id];
-    html+=`<button class="opt researching" data-act="cancelTech"><b>正在研究：${T.n}（${Math.floor(r.prog)}/${T.days} 日）</b><span>预计还要 ${researchEta()} 日。点这里放弃，退回 ${Math.round(T.cost*0.5)} 金。</span></button>`;
+    const T=TECHS[r.id],why=researchStall(S);
+    html+=`<button class="opt researching" data-act="cancelTech"><b>正在研究：${T.n}（${Math.floor(r.prog)}/${T.days} 日）</b><span>${why?`已停滞：${why}。`:`每日推进 ${researchRate(S).toFixed(2)}，预计还要 ${researchEta()} 日。`}点这里放弃，退回 ${Math.round(T.cost*0.5)} 金。</span>${checkList(techNeeds(S,r.id))}</button>`;
   }
   for(const tier of [1,2,3]){
     for(const id of TECH_KEYS){
       const T=TECHS[id];if(T.tier!==tier)continue;
-      const done=hasTech(S,id),block=done?'':researchBlock(S,id),busy=r&&r.id===id;
-      const own=done||busy?'':researchBlock({...S,research:null},id);
-      const meta=done?`第 ${Math.floor(S.tech[id]/YEAR)+1} 年掌握`:busy?'研究中':own||(block?`${T.cost} 金 · 约 ${T.days} 日 · 等当前项目完成后可立项`:`${T.cost} 金 · 约 ${T.days} 日的工作量 · 点击立项`);
-      html+=`<button class="opt${done?' done':''}${busy?' researching':''}" data-tech="${id}"${done||block?' disabled':''}><b>${'Ⅰ Ⅱ Ⅲ'.split(' ')[tier-1]} · ${T.n}</b><span>${T.d}效果：${T.h}。</span><small class="tech-meta${!done&&!block?' ok':''}">${meta}</small></button>`;
+      const done=hasTech(S,id),busy=r&&r.id===id;if(busy)continue;
+      const block=done?'':researchBlock(S,id),ready=!done&&!block;
+      const meta=done?`第 ${Math.floor(S.tech[id]/YEAR)+1} 年掌握`:ready?`约 ${T.days} 日的工作量 · 点击立项`:r&&!researchBlock({...S,research:null},id)?'条件已齐，等当前项目完成后可立项':'';
+      html+=`<button class="opt tech${done?' done':''}" data-tech="${id}"${ready?'':' disabled'}><b>${'Ⅰ Ⅱ Ⅲ'.split(' ')[tier-1]} · ${T.n}</b><span>${T.d}效果：${T.h}。</span>${done?'':checkList(techRows(id))}${meta?`<small class="tech-meta${ready?' ok':''}">${meta}</small>`:''}</button>`;
     }
   }
+  html+='<p class="mnote">想培养行家：年轻人成年后多半做所在村子的本行（禾谷出农夫，松林出樵夫，溪湾出渔民和商人），可以先把孩子搬过去；也可以迎来移民，或用“传授手艺”直接提升一个人的技能。改行会让技能减半。</p>';
   html+='<button class="opt free" data-act="close"><b>关闭</b></button>';
   $('mdlO').innerHTML=html;
 }
@@ -557,17 +566,20 @@ function updateTech(){
   setT('techEra',`${era(S)}时期 · ${n}/${TECH_KEYS.length}`);
   if(r){
     const T=TECHS[r.id];
-    setT('techDesc',`正在研究${T.n}，${Math.floor(r.prog)}/${T.days} 日，预计还要 ${researchEta()} 日。`);
+    const why=researchStall(S);
+    setT('techDesc',why?`${T.n}的研究停滞了：${why}。`:`正在研究${T.n}，${Math.floor(r.prog)}/${T.days} 日，预计还要 ${researchEta()} 日。`);
+    $('techDesc').classList.toggle('warn',!!why);
     $('techBarWrap').hidden=false;$('techBar').style.width=Math.round(clamp(r.prog/T.days,0,1)*100)+'%';
   }else{
     const ready=TECH_KEYS.filter(id=>!researchBlock(S,id)).length;
-    setT('techDesc',n>=TECH_KEYS.length?'所有技术都已掌握，溪谷进入了昌盛时期。':ready?`有 ${ready} 项技术可以立项研究。`:'暂时没有能研究的技术：攒够公库，或者先满足前置条件。');
+    setT('techDesc',n>=TECH_KEYS.length?'所有技术都已掌握，溪谷进入了昌盛时期。':ready?`有 ${ready} 项技术可以立项研究。`:'暂时没有能研究的技术：要攒够公库，也要培养出够格的行家。');
+    $('techDesc').classList.remove('warn');
     $('techBarWrap').hidden=true;
   }
 }
 
 /* ---------------- 开拓新土地 ---------------- */
-const checkList=rows=>`<ul class="checks">${rows.map(c=>`<li class="${c.ok?'ok':'no'}"><i>${c.ok?'✓':'✗'}</i><span>${c.label}</span><em>${c.have}</em></li>`).join('')}</ul>`;
+const checkList=rows=>`<span class="checks">${rows.map(c=>`<span class="ck ${c.ok?'ok':'no'}"><i>${c.ok?'✓':'✗'}</i><span>${c.label}</span><em>${c.have}</em></span>`).join('')}</span>`;
 function renderFrontierModal(){
   const st=frontierStage(S);
   $('mdlK').textContent='开拓新土地';$('mdlK').style.color='';
