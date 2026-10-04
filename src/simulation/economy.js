@@ -1,4 +1,5 @@
-import { MAP, VKEYS } from '../world/map.js';
+import { MAP, ALL_VKEYS } from '../world/map.js';
+import { workFactor, hardshipFor, frontierBirthCap, frontierTick } from './frontier.js';
 import { JOBS } from './constants.js';
 import { YEAR, seasonIndex, ageY } from './clock.js';
 import { random, rand, pick, clamp, has } from './random.js';
@@ -58,7 +59,7 @@ export function tick(){
   const inc=new Map(),prod=new Map();let food=0;
   for(const p of P){
     if(!isWorker(p)){if(p.job==='child')p.skill=clamp(p.skill+0.05*(S.school?3:1)*skillK,0,100);continue;}
-    const k=(0.6+p.skill/125)*(0.4+0.6*p.health/100)*(p.fed<0.8?0.75:1)*(has(p,'勤劳')?1.15:1);
+    const k=(0.6+p.skill/125)*(0.4+0.6*p.health/100)*(p.fed<0.8?0.75:1)*(has(p,'勤劳')?1.15:1)*workFactor(S,p);
     let x=0;
     switch(p.job){
       case 'farmer':{const f=0.46*farmK*k;food+=f;prod.set(p,f);break;}
@@ -158,7 +159,8 @@ export function tick(){
       marketCount:buildingCount(p.village,'market'),
       teahouseCount:buildingCount(p.village,'teahouse'),
       marketUpgrade:upgradeOf(p.village,'market'),
-      teahouseUpgrade:upgradeOf(p.village,'teahouse')
+      teahouseUpgrade:upgradeOf(p.village,'teahouse'),
+      frontierHardship:hardshipFor(S,p)
     });
     p.happiness=clamp(p.happiness+(why.rawTarget-p.happiness)*0.07+rand(-0.8,0.8),0,100);
     if(p.happiness<MIGRATION_RULES.sadHappinessThreshold)p.sadDays++;else p.sadDays=Math.max(0,p.sadDays-1);
@@ -166,7 +168,7 @@ export function tick(){
   }
 
   // 来往
-  const byV={};for(const v of VKEYS)byV[v]=[];for(const p of P)byV[p.village].push(p);
+  const byV={};for(const v of ALL_VKEYS)byV[v]=[];for(const p of P)byV[p.village].push(p);
   for(const p of P){
     let k=(has(p,'好客')?1.6:has(p,'内向')?0.5:1)*(S.festival>0?2:1)*(buildingCount(p.village,'teahouse')?TEA_SOCIAL[Math.max(1,statOf(bs,p.village,'teahouse').max)]:1),times=0;
     while(k>0){if(random()<Math.min(1,k)*0.6)times++;k-=1;}
@@ -206,7 +208,7 @@ export function tick(){
     if(m.gender!=='女'||!m.partner||m.age<18*YEAR||m.age>42*YEAR||S.day-m.lastBirth<60)continue;
     const f=living(m.partner);if(!f)continue;
     if(fd<15||(m.happiness+f.happiness)/2<50)continue;
-    if(random()>0.012*(P.length<60+techBonus(S,'birthCap')?1:0.3))continue;
+    if(random()>0.012*(P.length<60+techBonus(S,'birthCap')+frontierBirthCap(S)?1:0.3))continue;
     m.lastBirth=S.day;
     const c=makePerson({village:m.village,age:0,home:m.home,parents:[f.id,m.id],skill:rand(5,15),happiness:70});
     m.children.push(c.id);f.children.push(c.id);setRel(c,m,80);setRel(c,f,80);
@@ -225,6 +227,8 @@ export function tick(){
     if(migration.automaticEligible&&random()<migration.dailyChance)remove(p,'left');
   }
   if(!P.length){chron('最后一个人也离开了。溪谷重归寂静。','death');S.paused=true;return;}
+  const frontier=frontierTick(S);
+  if(frontier)chron(frontier.text,frontier.event==='failed'?'leave':'event');
 
   // 改行
   const wk=P.filter(isWorker),avgInc=wk.length?wk.reduce((t,p)=>t+p.lastIncome,0)/wk.length:0;

@@ -1,5 +1,5 @@
 import { createHejingStorage } from './storage/index.js';
-import { MAP, N, VKEYS } from './world/map.js';
+import { MAP, N, VKEYS, ISLE, ALL_VKEYS } from './world/map.js';
 import { YEAR, SEASON, SEASONS, ageY, seasonIndex, dateLabel } from './simulation/clock.js';
 import { JOBS, POLICIES } from './simulation/constants.js';
 import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
@@ -9,6 +9,7 @@ import { configureEconomy, pushHist, tick } from './simulation/economy.js';
 import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './simulation/explainability.js';
 import { createChallenges } from './simulation/challenges.js';
 import { BUILDS, UPGRADES, buildingStats, statOf, totalBonus, granaryCapacity, investedCost, levelOf, levelName, nextUpgrade, upgradeBlock, upgradeBuilding } from './simulation/buildings.js';
+import { FRONTIER, frontierStage, isSettled, isPioneering, isleVisible, activeVillages, islanders, islandAdults, islandMorale, expeditionChecks, expeditionReady, pickSettlers, launchExpedition, returnHome, retryLeft, hardshipFor } from './simulation/frontier.js';
 import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, startResearch, cancelResearch } from './simulation/tech.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
 
@@ -52,7 +53,7 @@ const SEEDS=[
   {k:'immigrants',n:'迎来移民',d:'五到七位陌生人前来定居',cd:20,
     st:()=>S.ch&&S.ch.id==='grow'&&!S.ch.result?'本挑战不可用':cdState('immigrants'),dis:()=>cdLeft('immigrants')>0||(S.ch&&S.ch.id==='grow'&&!S.ch.result),on:()=>false,
     go(){
-      const n=randi(5,7),v=pick(VKEYS),ps=[];
+      const n=randi(5,7),v=pick(activeVillages(S)),ps=[];
       for(let k=0;k<n;k++){
         const p=makePerson({village:v,age:randi(18,40)*YEAR+randi(0,YEAR-1),wealth:rand(2,8),happiness:58,skill:rand(15,55)});
         const e=pick(MAP.edge);p.x=e.i;p.y=e.j;assignTarget(p);const h=homeTile(p);p.tx=h.i;p.ty=h.j;
@@ -106,7 +107,7 @@ const DILEMMAS={
     ]
   },
   taxcut:{
-    when(){if(S.tax<0.08)return null;const v=pick(VKEYS);const ps=S.people.filter(q=>q.village===v&&isWorker(q));return ps.length?{v,p:pick(ps).id}:null;},
+    when(){if(S.tax<0.08)return null;const v=pick(activeVillages(S));const ps=S.people.filter(q=>q.village===v&&isWorker(q));return ps.length?{v,p:pick(ps).id}:null;},
     title:()=>'减税请愿',
     text:d=>`${nm(d.p)}带着${VN(d.v)}的十几个人来请愿：日子过得紧巴，希望把生产税率从 ${Math.round(S.tax*100)}% 降到 ${Math.max(0,Math.round(S.tax*100)-5)}%。`,
     opts:d=>[
@@ -132,7 +133,7 @@ const DILEMMAS={
     ]
   },
   refugees:{
-    when:()=>({n:randi(3,4),v:pick(VKEYS)}),
+    when:()=>({n:randi(3,4),v:pick(activeVillages(S))}),
     title:()=>'岸边的逃荒者',
     text:d=>`一家 ${d.n} 口人坐着破船漂到${VN(d.v)}附近的岸边，衣衫褴褛，请求留下来。粮仓还够吃 ${Math.floor(foodDays())} 天。`,
     opts:d=>[
@@ -151,7 +152,7 @@ const DILEMMAS={
   dispute:{
     when(){
       for(const p of S.people){if(p.job==='child')continue;for(const k in p.rel){if(p.rel[k]<=-15){const q=living(+k);if(q&&q.job!=='child')return {a:p.id,b:q.id};}}}
-      const v=pick(VKEYS),ps=S.people.filter(q=>q.village===v&&isWorker(q));if(ps.length<2)return null;
+      const v=pick(activeVillages(S)),ps=S.people.filter(q=>q.village===v&&isWorker(q));if(ps.length<2)return null;
       const a=pick(ps);let b=pick(ps),n=0;while(b===a&&n++<10)b=pick(ps);return b===a?null:{a:a.id,b:b.id};},
     title:()=>'田界之争',
     text:d=>`${nm(d.a)}和${nm(d.b)}为一块地的归属吵得不可开交，两人都来找你评理。`,
@@ -214,12 +215,33 @@ const DILEMMAS={
       {t:'祝一路顺风',h:`${t}会离开溪谷`,go(){const q=living(d.p);if(!q)return '';remove(q,'left','wander');return `${q.name}背上行囊，坐船离开了溪谷。`;}},
       {t:`让${t}再想想`,h:'也许过阵子就好了，也许不会',go(){const q=living(d.p);if(q){q.happiness=clamp(q.happiness-3,0,100);log(q,'想出去闯荡，被劝再想想');}return `${t}点点头，没再说什么。`;}}
     ];}
+  },
+  isle:{
+    when:()=>isPioneering(S)&&islanders(S).length?{}:null,
+    title:()=>'南屿来信',
+    text:()=>`南屿的开拓者捎信回来：海风大、粮食紧，有人病倒了。岛上现在有 ${islandAdults(S).length} 位劳力（少于 ${FRONTIER.minAdults} 位远征就会失败），平均幸福 ${Math.round(islandMorale(S))}（开荒期满时要达到 ${FRONTIER.minMorale}）。`,
+    opts:()=>[
+      {t:'派船送补给',h:'公库 −40、粮食 −40；开拓者健康 +20、幸福 +12',ok:()=>S.treasury>=40&&S.food>=40,go(){
+        S.treasury-=40;S.food-=40;
+        for(const p of islanders(S)){p.health=Math.min(100,p.health+20);p.happiness=clamp(p.happiness+12,0,100);log(p,'收到了故乡送来的补给');}
+        return '补给船靠了岸，开拓者们捧着家乡的米和信，好几个人红了眼眶。';}},
+      {t:'让他们咬牙坚持',h:'开拓者幸福 −6，但患难之中彼此更亲近',go(){
+        const ps=islanders(S);
+        for(const p of ps){p.happiness=clamp(p.happiness-6,0,100);for(const q of ps)if(q.id>p.id)changeRel(p,q,12);}
+        return '开拓者们挤在一个窝棚里熬过了难关，彼此成了过命的交情。';}},
+      {t:'接回病弱的人',h:'健康低于 50 的人回到故乡，岛上人手会变少',go(){
+        const back=islanders(S).filter(p=>p.health<50);
+        if(!back.length)return '岛上没有病得太重的人，大家决定一起撑下去。';
+        for(const p of back){returnHome(S,p);log(p,'病倒后被接回了故乡');assignTarget(p);}
+        computeHouses();
+        return `${back.map(p=>p.name).join('、')}被接回了故乡，南屿还剩 ${islandAdults(S).length} 位劳力。`;}}
+    ]
   }
 };
 function maybeDilemma(){
   if(!S.dilemmasOn||S.pending||S.day<S.nextDilemma||!S.people.length)return;
   const c=[];
-  for(const k in DILEMMAS){if(k===S.lastDil)continue;const d=DILEMMAS[k].when();if(d)c.push([k,d,k==='levy'?3:k==='sick'?2:1]);}
+  for(const k in DILEMMAS){if(k===S.lastDil)continue;const d=DILEMMAS[k].when();if(d)c.push([k,d,k==='isle'?4:k==='levy'?3:k==='sick'?2:1]);}
   if(!c.length){S.nextDilemma=S.day+5;return;}
   let x=random()*c.reduce((t,e)=>t+e[2],0);
   for(const [k,d,w] of c){if((x-=w)<0){S.pending={k,d,res:null};S.lastDil=k;S.nextDilemma=S.day+randi(28,45);dirty=true;return;}}
@@ -299,21 +321,24 @@ $('introGo').addEventListener('click',()=>{
 let bcount={};
 function recountB(){bcount={};for(const b of S.built){bcount[b.v]=bcount[b.v]||{};bcount[b.v][b.b]=(bcount[b.v][b.b]||0)+1;}}
 function BC(v,b){return (bcount[v]&&bcount[v][b])||0;}
-function BT(b){let n=0;for(const v of VKEYS)n+=BC(v,b);return n;}
+function BT(b){let n=0;for(const v of ALL_VKEYS)n+=BC(v,b);return n;}
 function foodCap(){return 450+granaryCapacity(S.built)+techBonus(S,'cap');}
 const builtAt=t=>t?S.built.find(b=>b.i===t.i&&b.j===t.j)||null:null;
 function applyBuilt(){
   for(const t of MAP.all){t.type=t.orig;t.trees=t.otrees.slice();t.bld=null;t.bv=null;t.blv=0;}
   for(const b of S.built){const t=MAP.at(b.i,b.j);if(!t)continue;t.bld=b.b;t.bv=b.v;t.blv=levelOf(b);t.trees=[];if(t.type==='forest')t.type='grass';}
-  MAP.forest=MAP.all.filter(t=>t.type==='forest');
+  const open=isPioneering(S)||isSettled(S);
+  for(const t of MAP.isle.tiles)if(t.orig==='field'?!isSettled(S):t.orig==='plaza'&&!open)t.type='grass';
+  MAP.forest=MAP.all.filter(t=>t.type==='forest'&&!t.isle);
   recountB();colorKey='';
 }
-function nearestVillage(fi,fj){let best=null,bd=1e9;for(const k of VKEYS){const c=MAP.V[k].center,d=Math.hypot(c.i-fi,c.j-fj);if(d<bd){bd=d;best=k;}}return {k:best,d:bd};}
+function nearestVillage(fi,fj){let best=null,bd=1e9;for(const k of activeVillages(S)){const c=MAP.V[k].center,d=Math.hypot(c.i-fi,c.j-fj);if(d<bd){bd=d;best=k;}}return {k:best,d:bd};}
 function canPlace(t,b){
   if(!t)return '这里是海。';
   if(t.bld)return '这里已经有建筑了。';
   if(t.slot)return '这是村民盖房子的地方。';
   if(t.mine)return '这里是矿脉。';
+  if(t.isle&&!isSettled(S))return isleVisible(S)?'南屿还没有开拓。':'这里是海。';
   if(t.type!=='grass'&&t.type!=='forest')return '这里不能盖房子。';
   const nv=nearestVillage(t.i,t.j);
   if(nv.d>4.5)return '离村子太远了，没人会来用。';
@@ -352,6 +377,7 @@ function buildingInfo(b){
 function relocate(p,v){
   if(!p)return;
   if(p.village===v){toast(`${p.name}本来就住在${VN(v)}。`,true);return;}
+  if(isPioneering(S)&&(p.village===ISLE||v===ISLE)){toast('开荒期间不能随意往返南屿。',true);return;}
   const from=p.village,fam=[p];
   const pt=p.partner&&living(p.partner);if(pt&&pt.village===from)fam.push(pt);
   for(const id of p.children){const c=living(id);if(c&&c.job==='child'&&c.village===from&&!fam.includes(c))fam.push(c);}
@@ -423,6 +449,7 @@ function openModal(mode){
   if($('mdl').hidden)mdlReturnFocus=document.activeElement;
   mdlMode=mode;const w=wins();
   if(mode==='tech'){renderTechModal();}
+  else if(mode==='frontier'){renderFrontierModal();}
   else if(mode==='list'){
     $('mdlK').textContent='选一个剧本';$('mdlK').style.color='';$('mdlT').textContent='挑战';
     $('mdlX').textContent='每个挑战都有一个目标和期限。挑战使用独立存档，不会覆盖你的自由世界。';
@@ -443,9 +470,11 @@ function closeModal(){
 }
 $('chBtn').addEventListener('click',()=>openModal('list'));
 $('techBtn').addEventListener('click',()=>openModal('tech'));
+$('frontierBtn').addEventListener('click',()=>openModal('frontier'));
 $('gQuit').addEventListener('click',()=>{if(S.ch&&window.confirm('结束当前挑战并回到挑战前的自由世界吗？'))returnToFreeWorld();});
 $('mdl').addEventListener('click',e=>{
-  if(e.target.id==='mdl'&&(mdlMode==='list'||mdlMode==='tech')){closeModal();return;}
+  if(e.target.id==='mdl'&&(mdlMode==='list'||mdlMode==='tech'||mdlMode==='frontier')){closeModal();return;}
+  if(e.target.closest('[data-act="launch"]')){launchIsle();return;}
   const b=e.target.closest('button');if(!b)return;
   if(b.dataset.tech){pickTech(b.dataset.tech);return;}
   if(b.dataset.act==='cancelTech'){dropTech();return;}
@@ -469,7 +498,7 @@ document.addEventListener('keydown',e=>{
   const active=!$('dlg').hidden?$('dlg'):!$('saveMdl').hidden?$('saveMdl'):!$('mdl').hidden?$('mdl'):null;
   if(active)trapDialogFocus(e,active);
   if(e.key==='Escape'&&!$('saveMdl').hidden){closeSaveManager();return;}
-  if(e.key==='Escape'&&(mdlMode==='list'||mdlMode==='tech')&&!$('mdl').hidden)closeModal();
+  if(e.key==='Escape'&&(mdlMode==='list'||mdlMode==='tech'||mdlMode==='frontier')&&!$('mdl').hidden)closeModal();
 });
 function renderGoal(){
   const c=S.ch;$('goal').hidden=!c;if(!c)return;
@@ -536,6 +565,63 @@ function updateTech(){
   }
 }
 
+/* ---------------- 开拓新土地 ---------------- */
+const checkList=rows=>`<ul class="checks">${rows.map(c=>`<li class="${c.ok?'ok':'no'}"><i>${c.ok?'✓':'✗'}</i><span>${c.label}</span><em>${c.have}</em></li>`).join('')}</ul>`;
+function renderFrontierModal(){
+  const st=frontierStage(S);
+  $('mdlK').textContent='开拓新土地';$('mdlK').style.color='';
+  let html;
+  if(st==='settled'){
+    $('mdlT').textContent='南屿已是溪谷的家园';
+    $('mdlX').textContent=`第 ${Math.floor(S.frontier.day/YEAR)+1} 年，开拓者在南屿站稳了脚跟。`;
+    html=`<p class="mnote">南屿的农夫和渔民产出 +${Math.round(FRONTIER.farmBonus*100)}%；人口超过更高的上限（+${FRONTIER.birthCap}）后出生率才会下降。移民和逃荒者也可能在南屿落脚，你可以在那里盖房、升级建筑，或把人搬过去。</p>`;
+  }else if(st==='pioneer'){
+    const f=S.frontier,done=S.day-f.start,adults=islandAdults(S).length,mor=islandMorale(S);
+    $('mdlT').textContent=`南屿开荒中 · ${done}/${FRONTIER.pioneerDays} 日`;
+    $('mdlX').textContent='开拓者干活只有平常一半的收成，还要忍受想家之苦和海上的风暴。撑过开荒期才算成功。';
+    html=checkList([
+      {ok:adults>=FRONTIER.minAdults,label:`岛上至少 ${FRONTIER.minAdults} 位劳力（任何时候少于这个数就失败）`,have:`${adults} 人`},
+      {ok:mor>=FRONTIER.minMorale,label:`期满时开拓者平均幸福至少 ${FRONTIER.minMorale}`,have:`现在 ${Math.round(mor)}`}
+    ])+`<p class="mnote">稳住人心的办法：用恩惠登门陪伴开拓者，举办丰收节，在“南屿来信”时派船送补给，或者降低税率让他们多留些钱。</p>`;
+  }else{
+    const checks=expeditionChecks(S),ready=expeditionReady(S),team=ready?pickSettlers(S):[];
+    $('mdlT').textContent=isleVisible(S)?'远征南屿':'传说中的海岛';
+    $('mdlX').textContent=isleVisible(S)
+      ?'远洋商船的水手说，东南海上有一座无人小岛，土地肥沃、鱼群密集。远征要倾全溪谷之力，开荒六十日。失败的话，投入的钱粮全部白费，还要休整两年才能再试。'
+      :'老人们说，晴天时能望见东南海上有一座小岛，但没人有本事渡过去。先掌握远洋航路，才能找到它。';
+    if(S.frontier&&S.frontier.tries)$('mdlX').textContent+=` 溪谷已经远征过 ${S.frontier.tries} 次。`;
+    html=checkList(checks)+`<button class="opt" data-act="launch"${ready?'':' disabled'}><b>扬帆出发</b><span>${ready?`${team.filter(isWorker).length} 位志愿者带着家人共 ${team.length} 人出发：${team.map(p=>p.name).join('、')}`:'所有条件都满足后才能出发。'}</span></button>`;
+  }
+  html+='<button class="opt free" data-act="close"><b>关闭</b></button>';
+  $('mdlO').innerHTML=html;
+}
+function launchIsle(){
+  if(!expeditionReady(S))return;
+  if(!window.confirm(`确定远征南屿吗？公库会花掉 ${FRONTIER.treasury} 金，带走 ${FRONTIER.provisions} 担粮食。失败的话，这些都会白费。`))return;
+  const team=launchExpedition(S);if(!team)return;
+  for(const p of team)assignTarget(p);
+  applyBuilt();computeHouses();
+  chron(`远征队扬帆出发！${team.length} 人带着 ${FRONTIER.provisions} 担粮食驶向南屿，开始为期 ${FRONTIER.pioneerDays} 日的开荒。`,'event');
+  toast('远征队出发了');dirty=true;renderFrontierModal();updateUI();
+}
+let frontierKey='';
+function updateFrontier(){
+  const st=frontierStage(S),key=st+'|'+isleVisible(S);
+  if(key!==frontierKey){frontierKey=key;applyBuilt();computeHouses();layout();}
+  const bar=$('frontierBarWrap');bar.hidden=st!=='pioneer';
+  if(st==='settled'){setT('frontierTag','已开拓');setT('frontierDesc','南屿已成为第四个聚落，田地和渔场都更丰饶。');}
+  else if(st==='pioneer'){
+    const done=S.day-S.frontier.start;
+    setT('frontierTag','开荒中');
+    setT('frontierDesc',`第 ${done}/${FRONTIER.pioneerDays} 日，岛上 ${islandAdults(S).length} 位劳力，平均幸福 ${Math.round(islandMorale(S))}。`);
+    $('frontierBar').style.width=Math.round(clamp(done/FRONTIER.pioneerDays,0,1)*100)+'%';
+  }else{
+    const met=expeditionChecks(S).filter(c=>c.ok).length,all=expeditionChecks(S).length;
+    setT('frontierTag',isleVisible(S)?'待开拓':'未发现');
+    setT('frontierDesc',retryLeft(S)?`上次远征失败了，还要休整 ${retryLeft(S)} 日。`:isleVisible(S)?`东南海上的南屿等待开拓：已满足 ${met}/${all} 项条件。`:'传说东南海上有座小岛，掌握远洋航路后才能找到它。');
+  }
+}
+
 /* ---------------- 关注提醒 ---------------- */
 function renderAlert(){
   const a=S.alerts[0];$('alert').hidden=!a;if(!a)return;
@@ -559,7 +645,7 @@ let theme={label:'#fff',ink:'#263022',line:'#dfe2d2',accent:'#4f7136'};
 let houses=new Set();
 function computeHouses(){
   const set=new Set();for(const p of S.people)set.add(homeTile(p));
-  for(const k of VKEYS){set.add(MAP.V[k].slots[0]);set.add(MAP.V[k].slots[1]);}
+  for(const k of activeVillages(S)){set.add(MAP.V[k].slots[0]);set.add(MAP.V[k].slots[1]);}
   houses=set;
 }
 function readTheme(){
@@ -572,11 +658,12 @@ function resize(){
   cv.width=Math.round(r.width*view.dpr);cv.height=Math.round(r.height*view.dpr);layout();
 }
 function layout(){
-  const base=Math.min(view.w*0.92/11.6,view.h*0.86/6.6);
+  const wide=S&&isleVisible(S);
+  const base=Math.min(view.w*0.92/11.6,view.h*0.86/(wide?8.1:6.6));
   view.tw=base*view.zoom;
   view.panX=clamp(view.panX,-view.w*0.6*view.zoom,view.w*0.6*view.zoom);
   view.panY=clamp(view.panY,-view.h*0.6*view.zoom,view.h*0.6*view.zoom);
-  view.ox=view.w/2+view.panX;view.oy=view.h/2-(N-1)*view.tw/4+view.tw*0.35+view.panY;
+  view.ox=view.w/2+view.panX;view.oy=view.h/2-(wide?22.5:N-1)*view.tw/4+view.tw*0.35+view.panY;
   cv.style.touchAction=(view.zoom>1.01||tool!=='look')?'none':'pan-y';
 }
 function iso(i,j){return [view.ox+(i-j)*view.tw/2,view.oy+(i+j)*view.tw/4];}
@@ -670,8 +757,9 @@ function draw(){
   const {w,h,dpr,tw}=view;if(!w)return;
   ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
   tileColors();
-  const se=seasonIdx(),hw=tw/2,hh=tw/4,D=tw*0.32,at=MAP.at;
+  const se=seasonIdx(),hw=tw/2,hh=tw/4,D=tw*0.32,at=MAP.at,showIsle=isleVisible(S);
   for(const t of MAP.all){
+    if(t.isle&&!showIsle)continue;
     const [x,y]=iso(t.i,t.j),col=tileCol.get(t),wat=t.type==='water';
     if(!at(t.i,t.j+1))poly(wat?'#5f93a8':'#b38957',x-hw,y,x,y+hh,x,y+hh+D,x-hw,y+D);
     if(!at(t.i+1,t.j))poly(wat?'#4f8197':'#957043',x,y+hh,x+hw,y,x+hw,y+D,x,y+hh+D);
@@ -689,6 +777,7 @@ function draw(){
   if(tool==='build'||tool==='raze'||tool==='upgrade'){
     const ht=hoverPt?tileAt(hoverPt):null;
     for(const t of MAP.all){
+      if(t.isle&&!showIsle)continue;
       const ok=tool==='build'?!canPlace(t,buildSel):tool==='upgrade'?!!t.bld&&!upgradeBlock(S,builtAt(t)):!!t.bld;
       if(!ok&&t!==ht)continue;
       const [x,y]=iso(t.i,t.j);
@@ -698,6 +787,7 @@ function draw(){
     }
   }
   for(const t of MAP.all){
+    if(t.isle&&!showIsle)continue;
     const [x,y]=iso(t.i,t.j);
     if(t.bld)drawBuilding(t,x,y,tw);
     if(t.type==='mountain')drawMountain(x,y,t,tw,se);
@@ -707,7 +797,7 @@ function draw(){
       ctx.fillStyle='#5a7f95';ctx.beginPath();ctx.ellipse(x,y,tw*0.06,tw*0.028,0,0,Math.PI*2);ctx.fill();
     }
     if(t.slot&&houses.has(t)){
-      const vk=VKEYS.find(k=>MAP.V[k].slots.includes(t));
+      const vk=ALL_VKEYS.find(k=>MAP.V[k].slots.includes(t));
       drawHouse(x,y,tw*0.36,shade(MAP.V[vk].roof,(t.v-0.5)*0.25));
     }
     for(const tr of t.trees)drawTree(x+(tr.dx-tr.dy)*hw,y+(tr.dx+tr.dy)*hh,tw*0.42*tr.s,tr.kind,se);
@@ -730,9 +820,10 @@ function draw(){
   }
   // 聚落名
   ctx.font=`600 ${tw<28?10.5:12}px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif`;ctx.textBaseline='middle';
-  for(const k of VKEYS){
+  for(const k of showIsle?ALL_VKEYS:VKEYS){
     const V=MAP.V[k],[x,y0]=iso(V.center.i,V.center.j),y=y0-tw*1.15;
-    const cnt=S.people.filter(p=>p.village===k).length,txt=`${V.n} ${cnt}人`;
+    const cnt=S.people.filter(p=>p.village===k).length;
+    const txt=k!==ISLE||isSettled(S)?`${V.n} ${cnt}人`:isPioneering(S)?`${V.n} 开荒中 ${cnt}人`:`${V.n} · 待开拓`;
     const tw2=ctx.measureText(txt).width,bw=tw2+22,bh=tw<28?18:21;
     const hl=dragGhost&&dragGhost.v===k;
     ctx.fillStyle=theme.label;ctx.strokeStyle=hl?theme.accent:theme.line;ctx.lineWidth=hl?2.5:1;rrect(x-bw/2,y-bh/2,bw,bh,bh/2);ctx.fill();ctx.stroke();
@@ -761,7 +852,7 @@ const STATS=[{k:'pop',n:'居民人口',u:'人'},{k:'food',n:'粮食储备',u:'�
 const WHY_LABELS={
   wealth:'财富',food:'温饱',friends:'朋友',partner:'伴侣',health:'健康',tax:'税负',inequality:'贫富差距',
   child:'孩童阶段',festival:'丰收节',drought:'干旱',winter:'冬季',optimist:'乐天性格',public:'公共投入',
-  market:'集市',teahouse:'茶馆',sad:'愁苦人口',policy:'分配制度'
+  market:'集市',teahouse:'茶馆',sad:'愁苦人口',policy:'分配制度',frontier:'开荒之苦'
 };
 const signed=v=>`${v>=0?'+':''}${v.toFixed(1)}`;
 function whyRows(factors,limit=6){
@@ -840,7 +931,8 @@ function updateFate(){
       marketCount:BC(p.village,'market'),
       teahouseCount:BC(p.village,'teahouse'),
       marketUpgrade:statOf(buildingStats(S.built),p.village,'market').bonus,
-      teahouseUpgrade:statOf(buildingStats(S.built),p.village,'teahouse').bonus
+      teahouseUpgrade:statOf(buildingStats(S.built),p.village,'teahouse').bonus,
+      frontierHardship:hardshipFor(S,p)
     });
     setT('fHappyTrend',`驱动目标 ${Math.round(happyWhy.rawTarget)} · 每日约 ${signed(happyWhy.expectedChange)}`);
     setH('fHappyWhy',whyRows(happyWhy.factors));
@@ -891,7 +983,7 @@ function updateUI(){
   updateStats();
   for(const s of SEEDS){s.el.disabled=!!s.dis();s.el.classList.toggle('active',!!s.on());s.stEl.textContent=s.st();}
   updateFate();updateChron();renderDilemma();
-  setT('purse',`公库 ${fmt(S.treasury)} 金`);updateTech();
+  setT('purse',`公库 ${fmt(S.treasury)} 金`);updateTech();updateFrontier();
   renderGoal();renderAlert();
   $('play').textContent=S.paused?'继续':'暂停';
 }
@@ -1107,7 +1199,7 @@ function installState(raw,fresh){
     pushHist();
   }
   applyBuilt();
-  colorKey='';lastChron=-1;for(const k in _c)delete _c[k];
+  colorKey='';lastChron=-1;frontierKey='';for(const k in _c)delete _c[k];
   computeHouses();syncControls();dirty=true;updateUI();
 }
 function init(fresh){

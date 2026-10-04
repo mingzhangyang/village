@@ -1,4 +1,4 @@
-import { MAP, VKEYS } from '../world/map.js';
+import { MAP, VKEYS, ISLE } from '../world/map.js';
 import { JOBS, TRAITS, SURN, GIVEN, SKIN, HAIR } from './constants.js';
 import { YEAR, ageY } from './clock.js';
 import { random, rand, randi, pick, clamp } from './random.js';
@@ -41,7 +41,7 @@ export function chooseJob(p){
   const S = getState();
   if(S.mine&&random()<0.22)return 'miner';
   if(S.people.length&&foodDays()<20&&random()<0.55)return p.village==='bay'?'fisher':'farmer';
-  const T={grain:[['farmer',.66],['craftsman',.2],['merchant',.14]],pine:[['woodcutter',.5],['craftsman',.33],['farmer',.17]],bay:[['fisher',.55],['merchant',.28],['craftsman',.17]]}[p.village];
+  const T={grain:[['farmer',.66],['craftsman',.2],['merchant',.14]],pine:[['woodcutter',.5],['craftsman',.33],['farmer',.17]],bay:[['fisher',.55],['merchant',.28],['craftsman',.17]],isle:[['farmer',.42],['fisher',.42],['craftsman',.16]]}[p.village];
   let x=random();for(const [j,w] of T){if((x-=w)<0)return j;}return T[0][0];
 }
 export function freeSlot(v){
@@ -139,15 +139,15 @@ export function remove(p,status,cause){
 export function nearestOf(list,h){let b=null,bd=1e9;for(let k=0;k<3;k++){const c=pick(list);const d=Math.hypot(c.i-h.i,c.j-h.j);if(d<bd){bd=d;b=c;}}return b;}
 export function assignTarget(p){
   const S = getState();
-  const V=MAP.V[p.village],home=homeTile(p);let t;const r=random();
+  const V=MAP.V[p.village],L=p.village===ISLE?MAP.isle:MAP,home=homeTile(p);let t;const r=random();
   if(!isWorker(p))t=r<0.5?home:r<0.8?V.center:pick(V.slots);
   else if(r<0.62){
     switch(p.job){
-      case 'farmer':t=nearestOf(MAP.fields,home);break;
-      case 'fisher':t=nearestOf(MAP.water,home);break;
-      case 'woodcutter':t=nearestOf(MAP.forest,home);break;
+      case 'farmer':t=nearestOf(L.fields,home);break;
+      case 'fisher':t=nearestOf(L.water,home);break;
+      case 'woodcutter':t=nearestOf(L.forest,home);break;
       case 'miner':t=S.mine?pick(MAP.mineAdj):V.center;break;
-      case 'merchant':t=pick(MAP.plazas);break;
+      case 'merchant':t=pick(L.plazas);break;
       default:t=random()<0.5?V.center:home;
     }
   }else t=r<0.85?home:V.center;

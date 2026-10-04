@@ -37,6 +37,7 @@ export function happinessBreakdown({
   teahouseCount = 0,
   marketUpgrade = 0,
   teahouseUpgrade = 0,
+  frontierHardship = 0,
 }) {
   const wealth = Math.max(0, person.wealth || 0);
   const fed = Number.isFinite(person.fed) ? person.fed : 1;
@@ -64,6 +65,7 @@ export function happinessBreakdown({
   const publicValue = add('public', Math.min(6, state.publicPerCap * 8));
   const marketValue = add('market', 2 * (Math.min(2, marketCount) + marketUpgrade));
   const teahouseValue = add('teahouse', 2 * (Math.min(2, teahouseCount) + teahouseUpgrade));
+  const frontierValue = add('frontier', -frontierHardship);
 
   let rawTarget = base + wealthValue;
   rawTarget += foodValue;
@@ -76,6 +78,7 @@ export function happinessBreakdown({
   rawTarget += winterValue;
   rawTarget += optimistValue;
   rawTarget += publicValue + marketValue + teahouseValue;
+  rawTarget += frontierValue;
 
   const target = clamp(rawTarget, 0, 100);
   const expectedNext = clamp(person.happiness + (rawTarget - person.happiness) * 0.07, 0, 100);

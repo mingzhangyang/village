@@ -39,10 +39,11 @@ describe('explainability', () => {
       friendCount: 3,
       marketCount: 2,
       teahouseCount: 1,
+      frontierHardship: 12,
     });
     const factorSum = result.factors.reduce((total, factor) => total + factor.value, 0);
 
-    expect(result.rawTarget).toBeCloseTo(89.5, 10);
+    expect(result.rawTarget).toBeCloseTo(77.5, 10);
     expect(factorSum).toBeCloseTo(result.rawTarget, 10);
     const expectedFactors = [
       { key: 'base', value: 30 },
@@ -61,6 +62,7 @@ describe('explainability', () => {
       { key: 'public', value: 4 },
       { key: 'market', value: 4 },
       { key: 'teahouse', value: 2 },
+      { key: 'frontier', value: -12 },
     ];
     expect(result.factors.map(factor => factor.key)).toEqual(expectedFactors.map(factor => factor.key));
     result.factors.forEach((factor, index) => {
