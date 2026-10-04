@@ -10,6 +10,12 @@ export function clampResidentHappiness(state){
   return state;
 }
 
+export function normalizeWorldName(value,fallback='溪谷群岛'){
+  const name=typeof value==='string'?value.trim().slice(0,40):'';
+  const backup=typeof fallback==='string'?fallback.trim().slice(0,40):'';
+  return name||backup||'溪谷群岛';
+}
+
 export function monotonicDay(previous,current){
   if(!Number.isFinite(previous))return Number.isFinite(current)?current:0;
   if(!Number.isFinite(current))return previous;
