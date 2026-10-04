@@ -5,7 +5,7 @@ import { JOBS, POLICIES } from './simulation/constants.js';
 import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
 import { pickUi } from './ui/random.js';
 import { createUiDialog } from './ui/dialog.js';
-import { monotonicDay } from './simulation/invariants.js';
+import { clampResidentHappiness, monotonicDay } from './simulation/invariants.js';
 import { describeTile, describeVillage } from './ui/inspect.js';
 import { moveKeyboardTile, peopleOnKeyboardTile } from './ui/map-keyboard.js';
 import { bindContext, hx, mix, shade, rgba, poly, rrect, hash, drawSea, buildTerrain, drawWaterFx, drawTree, drawHouse, drawMountain, drawMine, drawFountain, drawBuilding, drawPerson, drawSparkle, drawGlows, drawWeather, drawVignette } from './ui/scene.js';
@@ -283,7 +283,7 @@ function renderDilemma(){
 }
 $('dlgO').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||!S.pending)return;
-  if(b.id==='dlgLater'){dilemmaDeferred=true;$('dlg').hidden=true;$('pendingBtn').hidden=false;dirty=true;return;}
+  if(b.id==='dlgLater'){dilemmaDeferred=true;$('dlg').hidden=true;$('pendingBtn').hidden=false;const el=dlgReturnFocus;dlgReturnFocus=null;if(el&&typeof el.focus==='function')el.focus({preventScroll:true});dirty=true;return;}
   if(b.id==='dlgDone'){S.pending=null;dilemmaDeferred=false;dirty=true;updateUI();return;}
   const o=DILEMMAS[S.pending.k].opts(S.pending.d)[+b.dataset.i];if(!o||(o.ok&&!o.ok()))return;
   const r=o.go()||'就这么定了。';S.pending.res=r;
@@ -953,6 +953,7 @@ function updateChron(){
   setT('chronCount',`共 ${S.chron.length} 条`);
 }
 function updateUI(){
+  clampResidentHappiness(S);
   const se=seasonIdx();
   setT('worldName',S.worldName||'溪谷群岛');
   setT('date',`第 ${Math.floor(S.day/YEAR)+1} 年，${SEASONS[se]}，第 ${S.day%SEASON+1} 日`);
