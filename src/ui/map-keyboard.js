@@ -16,3 +16,9 @@ export function moveKeyboardTile(map,from,key,isVisible=t=>!!t,maxSteps=6){
   }
   return from;
 }
+
+// Keyboard activation is tile-exact: never borrow the pointer hit-test radius.
+export function peopleOnKeyboardTile(people,tile){
+  if(!tile)return [];
+  return people.filter(p=>Math.round(p.x)===tile.i&&Math.round(p.y)===tile.j);
+}

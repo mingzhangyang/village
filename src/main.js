@@ -5,7 +5,7 @@ import { JOBS, POLICIES } from './simulation/constants.js';
 import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
 import { pickUi } from './ui/random.js';
 import { describeTile, describeVillage } from './ui/inspect.js';
-import { moveKeyboardTile } from './ui/map-keyboard.js';
+import { moveKeyboardTile, peopleOnKeyboardTile } from './ui/map-keyboard.js';
 import { bindContext, hx, mix, shade, rgba, poly, rrect, hash, drawSea, buildTerrain, drawWaterFx, drawTree, drawHouse, drawMountain, drawMine, drawFountain, drawBuilding, drawPerson, drawSparkle, drawGlows, drawWeather, drawVignette } from './ui/scene.js';
 import { newState, normalizeState, setState, configureState } from './simulation/state.js';
 import { configureEconomy, pushHist, tick } from './simulation/economy.js';
@@ -1107,7 +1107,7 @@ cv.addEventListener('keydown',e=>{
   }
   if(e.key==='Enter'||e.key===' '){
     e.preventDefault();
-    const [x,y]=iso(kbTile.i,kbTile.j);tap({x,y:y-view.tw*0.1});
+    activateKeyboardTile(kbTile);
   }
 });
 cv.addEventListener('blur',()=>{hoverPt=null;});
@@ -1179,6 +1179,24 @@ $('info').addEventListener('click',e=>{
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('info').hidden&&mdlHidden()&&$('dlg').hidden)closeInfo();});
 
+function selectPerson(p){S.sel=p.id;$('tip').style.opacity='0';closeInfo();updateFate();}
+function activateKeyboardTile(t){
+  if(!t||!kbVisible(t))return;
+  const [x,y]=iso(t.i,t.j),pt={x,y:y-view.tw*0.1};
+  if(tool==='build'){place(t,buildSel);return;}
+  if(tool==='raze'){raze(t);return;}
+  if(tool==='upgrade'){upgrade(t);return;}
+  if(tool==='move'){
+    if(!moveSrc){toast('先按住或点一下要搬家的人。',true);return;}
+    const nv=nearestVillage(t.i,t.j);
+    if(nv.d>4.5){toast('点一个村子附近的地方。',true);return;}
+    relocate(living(moveSrc),nv.k);moveSrc=null;return;
+  }
+  const resident=peopleOnKeyboardTile(S.people,t)[0];
+  if(resident){selectPerson(resident);return;}
+  $('tip').style.opacity='0';openInfo({tile:t},pt);
+}
+
 function tap(pt){
   if(tool==='build'){place(tileAt(pt),buildSel);return;}
   if(tool==='raze'){raze(tileAt(pt));return;}
@@ -1191,10 +1209,9 @@ function tap(pt){
   const v=labelAt(pt);
   if(v){$('tip').style.opacity='0';openInfo({village:v},pt);return;}
   // 正点中小人就选人；否则看是不是点在房屋或建筑的轮廓上；再宽松地找附近的小人；最后才是地面。
-  const pick=p=>{S.sel=p.id;$('tip').style.opacity='0';closeInfo();updateFate();};
-  const direct=hitPerson(pt,true);if(direct){pick(direct);return;}
+  const direct=hitPerson(pt,true);if(direct){selectPerson(direct);return;}
   const sp=spriteAt(pt);if(sp){$('tip').style.opacity='0';openInfo({tile:sp},pt);return;}
-  const near=hitPerson(pt);if(near){pick(near);return;}
+  const near=hitPerson(pt);if(near){selectPerson(near);return;}
   const t=tileAt(pt);
   if(!t||(t.isle&&!isleVisible(S))){closeInfo();return;}
   $('tip').style.opacity='0';openInfo({tile:t},pt);

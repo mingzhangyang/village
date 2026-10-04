@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KEYBOARD_DIRECTIONS, moveKeyboardTile } from '../src/ui/map-keyboard.js';
+import { KEYBOARD_DIRECTIONS, moveKeyboardTile, peopleOnKeyboardTile } from '../src/ui/map-keyboard.js';
 
 describe('keyboard map navigation', () => {
   const openMap={at:(i,j)=>({i,j})};
@@ -29,5 +29,13 @@ describe('keyboard map navigation', () => {
   it('stays put when no visible tile exists in that direction', () => {
     const start={i:10,j:10};
     expect(moveKeyboardTile({at:()=>null},start,'ArrowLeft')).toBe(start);
+  });
+
+  it('activates only residents occupying the announced keyboard tile', () => {
+    const tile={i:10,j:10};
+    const here={id:1,x:10.2,y:9.8};
+    const adjacent={id:2,x:10.6,y:10.1};
+    const diagonal={id:3,x:9.4,y:10.6};
+    expect(peopleOnKeyboardTile([adjacent,diagonal,here],tile)).toEqual([here]);
   });
 });
