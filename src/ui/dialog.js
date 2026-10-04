@@ -31,7 +31,9 @@ function ensureHost(){
       event.preventDefault();finish(null);return;
     }
     if(event.key==='Enter'&&!event.shiftKey){
-      event.preventDefault();finish(readValue());return;
+      event.preventDefault();
+      const cancel=document.getElementById('askCancel');
+      finish(!cancel.hidden&&cancel.contains(event.target)?null:readValue());return;
     }
     if(event.key!=='Tab')return;
     const dlg=host.querySelector('.dlg');

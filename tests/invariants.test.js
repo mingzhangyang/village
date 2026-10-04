@@ -32,5 +32,6 @@ describe('simulation state invariants', () => {
     expect(normalizeState(state).worldName).toBe('山海溪谷');
     expect(normalizeWorldName('   ','溪谷 2')).toBe('溪谷 2');
     expect(normalizeWorldName('  新世界  ','溪谷 2')).toBe('新世界');
+    expect(normalizeWorldName('  山  海  ','溪谷 2')).toBe('山 海');
   });
 });

@@ -289,7 +289,7 @@ $('dlgO').addEventListener('click',e=>{
   const r=o.go()||'就这么定了。';S.pending.res=r;
   chron(`你的决定：${o.t}。${r}`,'choice');dirty=true;updateUI();
 });
-$('pendingBtn').addEventListener('click',()=>{dilemmaDeferred=false;dirty=true;renderDilemma();});
+$('pendingBtn').addEventListener('click',()=>{$('play').focus({preventScroll:true});dilemmaDeferred=false;dirty=true;renderDilemma();});
 
 /* ---------------- 伸出援手 ---------------- */
 const HELP={

@@ -11,9 +11,8 @@ export function clampResidentHappiness(state){
 }
 
 export function normalizeWorldName(value,fallback='溪谷群岛'){
-  const name=typeof value==='string'?value.trim().slice(0,40):'';
-  const backup=typeof fallback==='string'?fallback.trim().slice(0,40):'';
-  return name||backup||'溪谷群岛';
+  const clean=input=>typeof input==='string'?input.trim().replace(/\s+/g,' ').slice(0,40):'';
+  return clean(value)||clean(fallback)||'溪谷群岛';
 }
 
 export function monotonicDay(previous,current){
