@@ -32,14 +32,15 @@ function createNonWorker(state, { wealth, village = 'grain' }) {
   return person;
 }
 
-function createTradeWorld(seed, { stage = 'settled', tech = {} } = {}) {
+function createTradeWorld(seed, { stage = 'settled', tech = {}, caravan = 0, marketLevel = 0 } = {}) {
   const state = newState(seed);
   setState(state);
   state.food = 100;
   state.treasury = 0;
   state.tax = 0;
-  state.caravan = 0;
+  state.caravan = caravan;
   state.tech = { ...tech };
+  state.built = marketLevel ? [{ v: ISLE, b: 'market', lv: marketLevel }] : [];
   state.frontier = stage === 'pioneer'
     ? { stage: 'pioneer', start: state.day, origin: {}, tries: 1 }
     : { stage: 'settled', day: state.day, tries: 1 };
@@ -59,7 +60,10 @@ function createTradeWorld(seed, { stage = 'settled', tech = {} } = {}) {
     person.traits = [];
     return person;
   });
-  configureTestEconomy({ foodCapacity: () => 1000 });
+  configureTestEconomy({
+    foodCapacity: () => 1000,
+    buildingCount: (v, b) => v === ISLE && b === 'market' && marketLevel ? 1 : 0,
+  });
   return { state, merchant: people[0], craftsman: people[1] };
 }
 
@@ -145,6 +149,21 @@ describe('economy', () => {
     expect(upgraded.merchant.lastIncome / baseMerchant).toBeCloseTo(techMult(upgraded.state, 'merchant'), 8);
     expect(upgraded.craftsman.lastIncome / baseCraftsman).toBeCloseTo(techMult(upgraded.state, 'craft'), 8);
   });
+
+  it('keeps legacy caravan and level-1 market multipliers out of pooled merchant income', () => {
+    const base = createTradeWorld(808);
+    tick();
+    const baseIncome = base.merchant.lastIncome;
+
+    const caravan = createTradeWorld(808, { caravan: 10 });
+    tick();
+    expect(caravan.merchant.lastIncome - baseIncome).toBeCloseTo(0.3 * (2.5 - 1), 8);
+
+    const market = createTradeWorld(808, { marketLevel: 1 });
+    tick();
+    expect(market.merchant.lastIncome - baseIncome).toBeCloseTo(0.3 * 0.3, 8);
+  });
+
 
   it('keeps economy outputs finite across all food policies', () => {
     for (const [index, policy] of ['need', 'equal', 'work', 'market'].entries()) {

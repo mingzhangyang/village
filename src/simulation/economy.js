@@ -57,14 +57,24 @@ export function tick(){
   const wellLv=v=>buildingCount(v,'well')?Math.max(1,statOf(bs,v,'well').max):0;
   const upgradeOf=(v,b)=>buildingCount(v,b)?statOf(bs,v,b).bonus:0;
   const laborFactor=p=>(0.6+p.skill/125)*(0.4+0.6*p.health/100)*(p.fed<0.8?0.75:1)*(has(p,'勤劳')?1.15:1);
-  // 一份职业产出因子贯穿基础收入和交易池分成，避免科技、开荒或市场加成只作用到收入的一小部分。
+  // 新增生产力因素要贯穿完整收入链；旧有 caravan / 一级市场倍率只属于商人的基础经营收入，
+  // 不能反向改变老存档里原本不受它们影响的交易池分成。
+  const pooledFactor=p=>{
+    const frontier=workFactor(S,p);
+    switch(p.job){
+      case 'craftsman':return frontier*techMult(S,'craft');
+      case 'merchant':return frontier*techMult(S,'merchant')*(1+0.3*upgradeOf(p.village,'market'));
+      default:return frontier;
+    }
+  };
   const jobFactor=p=>{
     const frontier=workFactor(S,p);
     switch(p.job){
       case 'woodcutter':return frontier*techMult(S,'wood');
       case 'miner':return frontier*techMult(S,'mine');
-      case 'craftsman':return frontier*techMult(S,'craft');
-      case 'merchant':return frontier*techMult(S,'merchant')*(S.caravan>0?2.5:1)*(1+0.3*(Math.min(2,buildingCount(p.village,'market'))+upgradeOf(p.village,'market')));
+      case 'craftsman':return pooledFactor(p);
+      case 'merchant':return pooledFactor(p)*(S.caravan>0?2.5:1)
+        *(1+0.3*Math.min(2,buildingCount(p.village,'market')));
       default:return frontier;
     }
   };
@@ -120,7 +130,7 @@ export function tick(){
   const fcap=foodCapacity();S.rot=S.food>fcap?(S.food-fcap)*0.02*techMult(S,'rot'):0;S.food-=S.rot;
   const merch=P.filter(p=>p.job==='merchant'),crafts=P.filter(p=>p.job==='craftsman');
   const mcut=merch.length?foodPool*0.08:0;
-  for(const m of merch)inc.set(m,(inc.get(m)||0)+mcut/merch.length*jobFactor(m));
+  for(const m of merch)inc.set(m,(inc.get(m)||0)+mcut/merch.length*pooledFactor(m));
   const rest=foodPool-mcut;
   if(food>0){for(const [p,f] of prod)inc.set(p,(inc.get(p)||0)+rest*f/food);trades+=prod.size;}else S.treasury+=rest;
 
@@ -128,8 +138,8 @@ export function tick(){
   let goods=0;
   for(const p of P){if(p.job==='child')continue;const w=Math.max(0,p.wealth);const sp=Math.min(w,0.15+w*0.012);p.wealth-=sp;goods+=sp;if(sp>0.02)trades++;}
   const cw=crafts.reduce((t,p)=>t+0.5+p.skill/100,0);
-  for(const p of crafts)inc.set(p,(inc.get(p)||0)+goods*0.45*(0.5+p.skill/100)/cw*jobFactor(p));
-  for(const p of merch)inc.set(p,(inc.get(p)||0)+goods*0.15/merch.length*jobFactor(p));
+  for(const p of crafts)inc.set(p,(inc.get(p)||0)+goods*0.45*(0.5+p.skill/100)/cw*pooledFactor(p));
+  for(const p of merch)inc.set(p,(inc.get(p)||0)+goods*0.15/merch.length*pooledFactor(p));
 
   // 收税与公库
   for(const [p,x] of inc){const t=x*S.tax;S.treasury+=t;p.wealth+=x-t;p.lastIncome=x;}
