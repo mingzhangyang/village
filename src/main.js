@@ -9,6 +9,7 @@ import { configureEconomy, pushHist, tick } from './simulation/economy.js';
 import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './simulation/explainability.js';
 import { createChallenges } from './simulation/challenges.js';
 import { BUILDS } from './simulation/buildings.js';
+import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, startResearch, cancelResearch } from './simulation/tech.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
 
 const $=id=>document.getElementById(id);
@@ -299,7 +300,7 @@ let bcount={};
 function recountB(){bcount={};for(const b of S.built){bcount[b.v]=bcount[b.v]||{};bcount[b.v][b.b]=(bcount[b.v][b.b]||0)+1;}}
 function BC(v,b){return (bcount[v]&&bcount[v][b])||0;}
 function BT(b){let n=0;for(const v of VKEYS)n+=BC(v,b);return n;}
-function foodCap(){return 450+250*BT('granary');}
+function foodCap(){return 450+250*BT('granary')+techBonus(S,'cap');}
 function applyBuilt(){
   for(const t of MAP.all){t.type=t.orig;t.trees=t.otrees.slice();t.bld=null;t.bv=null;}
   for(const b of S.built){const t=MAP.at(b.i,b.j);if(!t)continue;t.bld=b.b;t.bv=b.v;t.trees=[];if(t.type==='forest')t.type='grass';}
@@ -407,7 +408,8 @@ let mdlMode='',mdlReturnFocus=null;
 function openModal(mode){
   if($('mdl').hidden)mdlReturnFocus=document.activeElement;
   mdlMode=mode;const w=wins();
-  if(mode==='list'){
+  if(mode==='tech'){renderTechModal();}
+  else if(mode==='list'){
     $('mdlK').textContent='选一个剧本';$('mdlK').style.color='';$('mdlT').textContent='挑战';
     $('mdlX').textContent='每个挑战都有一个目标和期限。挑战使用独立存档，不会覆盖你的自由世界。';
     $('mdlO').innerHTML=Object.entries(CHALLENGES).map(([k,C])=>`<button class="opt${w[k]?' done':''}" data-ch="${k}"><b>${C.n}</b><span>${C.d}</span></button>`).join('')
@@ -426,10 +428,13 @@ function closeModal(){
   if(el&&typeof el.focus==='function')el.focus({preventScroll:true});
 }
 $('chBtn').addEventListener('click',()=>openModal('list'));
+$('techBtn').addEventListener('click',()=>openModal('tech'));
 $('gQuit').addEventListener('click',()=>{if(S.ch&&window.confirm('结束当前挑战并回到挑战前的自由世界吗？'))returnToFreeWorld();});
 $('mdl').addEventListener('click',e=>{
-  if(e.target.id==='mdl'&&mdlMode==='list'){closeModal();return;}
+  if(e.target.id==='mdl'&&(mdlMode==='list'||mdlMode==='tech')){closeModal();return;}
   const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.tech){pickTech(b.dataset.tech);return;}
+  if(b.dataset.act==='cancelTech'){dropTech();return;}
   if(b.dataset.act==='list'){openModal('list');return;}
   if(b.dataset.act==='return'){returnToFreeWorld();return;}
   if(b.dataset.act==='keep'){keepChallengeWorld();return;}
@@ -450,7 +455,7 @@ document.addEventListener('keydown',e=>{
   const active=!$('dlg').hidden?$('dlg'):!$('saveMdl').hidden?$('saveMdl'):!$('mdl').hidden?$('mdl'):null;
   if(active)trapDialogFocus(e,active);
   if(e.key==='Escape'&&!$('saveMdl').hidden){closeSaveManager();return;}
-  if(e.key==='Escape'&&mdlMode==='list'&&!$('mdl').hidden)closeModal();
+  if(e.key==='Escape'&&(mdlMode==='list'||mdlMode==='tech')&&!$('mdl').hidden)closeModal();
 });
 function renderGoal(){
   const c=S.ch;$('goal').hidden=!c;if(!c)return;
@@ -459,6 +464,62 @@ function renderGoal(){
   $('gBar').style.width=Math.round(clamp(c.result&&c.result.win?1:c.pct,0,1)*100)+'%';
   setT('gQuit',c.result?'回到原世界':'放弃挑战');
   if(c.result&&!c.shown){c.shown=1;openModal('result');}
+}
+
+/* ---------------- 发展图谱 ---------------- */
+const workerCount=()=>S.people.filter(isWorker).length;
+function researchEta(){
+  const r=S.research;if(!r)return 0;
+  const rate=researchRate(S,workerCount());
+  return rate>0?Math.ceil((TECHS[r.id].days-r.prog)/rate):0;
+}
+function renderTechModal(){
+  const n=techCount(S),r=S.research,rate=researchRate(S,workerCount());
+  $('mdlK').textContent='发展图谱';$('mdlK').style.color='';
+  $('mdlT').textContent=`${era(S)}时期 · 已掌握 ${n}/${TECH_KEYS.length} 项`;
+  $('mdlX').textContent=`从公库拿钱立项，研究需要一些日子。劳力越多、办了学堂，进度越快；现在每日推进 ${rate.toFixed(2)} 日的工作量。同一时间只能研究一项，中途放弃退回一半费用。`;
+  let html='';
+  if(r){
+    const T=TECHS[r.id];
+    html+=`<button class="opt researching" data-act="cancelTech"><b>正在研究：${T.n}（${Math.floor(r.prog)}/${T.days} 日）</b><span>预计还要 ${researchEta()} 日。点这里放弃，退回 ${Math.round(T.cost*0.5)} 金。</span></button>`;
+  }
+  for(const tier of [1,2,3]){
+    for(const id of TECH_KEYS){
+      const T=TECHS[id];if(T.tier!==tier)continue;
+      const done=hasTech(S,id),block=done?'':researchBlock(S,id),busy=r&&r.id===id;
+      const own=done||busy?'':researchBlock({...S,research:null},id);
+      const meta=done?`第 ${Math.floor(S.tech[id]/YEAR)+1} 年掌握`:busy?'研究中':own||(block?`${T.cost} 金 · 约 ${T.days} 日 · 等当前项目完成后可立项`:`${T.cost} 金 · 约 ${T.days} 日的工作量 · 点击立项`);
+      html+=`<button class="opt${done?' done':''}${busy?' researching':''}" data-tech="${id}"${done||block?' disabled':''}><b>${'Ⅰ Ⅱ Ⅲ'.split(' ')[tier-1]} · ${T.n}</b><span>${T.d}效果：${T.h}。</span><small class="tech-meta${!done&&!block?' ok':''}">${meta}</small></button>`;
+    }
+  }
+  html+='<button class="opt free" data-act="close"><b>关闭</b></button>';
+  $('mdlO').innerHTML=html;
+}
+function pickTech(id){
+  if(!startResearch(S,id)){toast(researchBlock(S,id)||'现在不能研究',true);return;}
+  const T=TECHS[id];
+  chron(`溪谷拨出公库 ${T.cost} 金，开始研究${T.n}。`,'choice');
+  toast(`开始研究${T.n}`);dirty=true;renderTechModal();updateUI();
+}
+function dropTech(){
+  const r=S.research;if(!r)return;const T=TECHS[r.id];
+  if(!window.confirm(`放弃研究${T.n}吗？已经投入的日子会作废，公库退回 ${Math.round(T.cost*0.5)} 金。`))return;
+  const back=cancelResearch(S);
+  chron(`溪谷放弃了${T.n}的研究，退回 ${back} 金。`,'choice');
+  dirty=true;renderTechModal();updateUI();
+}
+function updateTech(){
+  const r=S.research,n=techCount(S);
+  setT('techEra',`${era(S)}时期 · ${n}/${TECH_KEYS.length}`);
+  if(r){
+    const T=TECHS[r.id];
+    setT('techDesc',`正在研究${T.n}，${Math.floor(r.prog)}/${T.days} 日，预计还要 ${researchEta()} 日。`);
+    $('techBarWrap').hidden=false;$('techBar').style.width=Math.round(clamp(r.prog/T.days,0,1)*100)+'%';
+  }else{
+    const ready=TECH_KEYS.filter(id=>!researchBlock(S,id)).length;
+    setT('techDesc',n>=TECH_KEYS.length?'所有技术都已掌握，溪谷进入了昌盛时期。':ready?`有 ${ready} 项技术可以立项研究。`:'暂时没有能研究的技术：攒够公库，或者先满足前置条件。');
+    $('techBarWrap').hidden=true;
+  }
 }
 
 /* ---------------- 关注提醒 ---------------- */
@@ -805,7 +866,7 @@ function updateUI(){
   updateStats();
   for(const s of SEEDS){s.el.disabled=!!s.dis();s.el.classList.toggle('active',!!s.on());s.stEl.textContent=s.st();}
   updateFate();updateChron();renderDilemma();
-  setT('purse',`公库 ${fmt(S.treasury)} 金`);
+  setT('purse',`公库 ${fmt(S.treasury)} 金`);updateTech();
   renderGoal();renderAlert();
   $('play').textContent=S.paused?'继续':'暂停';
 }

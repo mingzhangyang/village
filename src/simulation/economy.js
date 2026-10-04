@@ -3,6 +3,7 @@ import { JOBS } from './constants.js';
 import { YEAR, seasonIndex, ageY } from './clock.js';
 import { random, rand, pick, clamp, has } from './random.js';
 import { getState } from './state.js';
+import { TECHS, SHIP_INTERVAL, hasTech, techBonus, techMult, advanceResearch } from './tech.js';
 import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './explainability.js';
 import { isWorker, need, log, chron, notify, living, makePerson, setRel, changeRel, remove, assignTarget, foodDays, chooseJob, friendCount } from './population.js';
 
@@ -38,6 +39,7 @@ export function tick(){
   if(S.caravan>0&&--S.caravan===0)chron('商队收拾行装，离开了溪湾。','info');
   if(S.mineClosed>0&&--S.mineClosed===0)chron('矿洞整修完毕，矿工们重新下井。','info');
   if(S.day%20===0&&S.favor<5)S.favor++;
+  if(hasTech(S,'searoute')&&S.day%SHIP_INTERVAL===0){S.food+=30;S.caravan=Math.max(S.caravan,6);chron('远洋商船靠了岸，卸下三十担粮食，溪湾的集市热闹起来。','event');}
 
   for(const p of P){
     p.age++;
@@ -46,23 +48,24 @@ export function tick(){
   }
 
   // 劳作
-  const farmK=[1.0,1.3,1.6,0.25][se]*(S.drought>0?0.3:1)*(S.canal?1.35:1);
-  const fishK=[1.0,1.1,1.0,0.6][se]*(S.drought>0?0.8:1);
+  const farmK=[1.0,1.3,1.6,0.25][se]*(S.drought>0?0.3:1)*(S.canal?1.35:1)*techMult(S,'farm');
+  const fishK=[1.0,1.1,1.0,0.6][se]*(S.drought>0?0.8:1)*techMult(S,'fish');
+  const skillK=techMult(S,'skill');
   const inc=new Map(),prod=new Map();let food=0;
   for(const p of P){
-    if(!isWorker(p)){if(p.job==='child')p.skill=clamp(p.skill+0.05*(S.school?3:1),0,100);continue;}
+    if(!isWorker(p)){if(p.job==='child')p.skill=clamp(p.skill+0.05*(S.school?3:1)*skillK,0,100);continue;}
     const k=(0.6+p.skill/125)*(0.4+0.6*p.health/100)*(p.fed<0.8?0.75:1)*(has(p,'勤劳')?1.15:1);
     let x=0;
     switch(p.job){
       case 'farmer':{const f=0.46*farmK*k;food+=f;prod.set(p,f);break;}
       case 'fisher':{const f=0.34*fishK*k;food+=f;prod.set(p,f);break;}
-      case 'woodcutter':x=0.95*k;break;
-      case 'miner':x=S.mineClosed>0?0:2.3*k;break;
-      case 'craftsman':x=0.35*k;break;
-      case 'merchant':x=0.3*k*(S.caravan>0?2.5:1)*(1+0.3*Math.min(2,buildingCount(p.village,'market')));break;
+      case 'woodcutter':x=0.95*k*techMult(S,'wood');break;
+      case 'miner':x=S.mineClosed>0?0:2.3*k*techMult(S,'mine');break;
+      case 'craftsman':x=0.35*k*techMult(S,'craft');break;
+      case 'merchant':x=0.3*k*techMult(S,'merchant')*(S.caravan>0?2.5:1)*(1+0.3*Math.min(2,buildingCount(p.village,'market')));break;
     }
     inc.set(p,x);
-    p.skill=clamp(p.skill+0.12*(has(p,'好学')?1.6:1)*(1-p.skill/100),0,100);
+    p.skill=clamp(p.skill+0.12*(has(p,'好学')?1.6:1)*skillK*(1-p.skill/100),0,100);
   }
   S.food+=food;
 
@@ -97,7 +100,7 @@ export function tick(){
     avail-=s;p.fed=s/need(p);
   }
   S.food=Math.max(0,avail);
-  const fcap=foodCapacity();S.rot=S.food>fcap?(S.food-fcap)*0.02:0;S.food-=S.rot;
+  const fcap=foodCapacity();S.rot=S.food>fcap?(S.food-fcap)*0.02*techMult(S,'rot'):0;S.food-=S.rot;
   const merch=P.filter(p=>p.job==='merchant'),crafts=P.filter(p=>p.job==='craftsman');
   const mcut=merch.length?foodPool*0.08:0;
   for(const m of merch)inc.set(m,(inc.get(m)||0)+mcut/merch.length);
@@ -127,9 +130,9 @@ export function tick(){
     else{
       if(p.hungerDays>=3)log(p,'终于又吃上了饱饭');p.hungerDays=0;
       const cap=p.age>60*YEAR?100-(ageY(p)-60)*2.5:100;
-      p.health=Math.min(Math.max(cap,0),p.health+(has(p,'体弱')?0.5:1.3)+(buildingCount(p.village,'well')?0.6:0));
+      p.health=Math.min(Math.max(cap,0),p.health+(has(p,'体弱')?0.5:1.3)+(buildingCount(p.village,'well')?0.6:0)+techBonus(S,'heal'));
     }
-    if(S.plague>0&&p.plagueTag!==S.plagueId&&random()<0.035*(buildingCount(p.village,'well')?0.5:1)){
+    if(S.plague>0&&p.plagueTag!==S.plagueId&&random()<0.035*(buildingCount(p.village,'well')?0.5:1)*techMult(S,'plague')){
       p.plagueTag=S.plagueId;
       p.health-=rand(15,38)*(has(p,'体弱')?1.5:1)*((p.job==='child'||p.job==='elder')?1.3:1);
       log(p,'染上了疫病');notify(p,'染上了疫病');
@@ -197,7 +200,7 @@ export function tick(){
     if(m.gender!=='女'||!m.partner||m.age<18*YEAR||m.age>42*YEAR||S.day-m.lastBirth<60)continue;
     const f=living(m.partner);if(!f)continue;
     if(fd<15||(m.happiness+f.happiness)/2<50)continue;
-    if(random()>0.012*(P.length<60?1:0.3))continue;
+    if(random()>0.012*(P.length<60+techBonus(S,'birthCap')?1:0.3))continue;
     m.lastBirth=S.day;
     const c=makePerson({village:m.village,age:0,home:m.home,parents:[f.id,m.id],skill:rand(5,15),happiness:70});
     m.children.push(c.id);f.children.push(c.id);setRel(c,m,80);setRel(c,f,80);
@@ -240,6 +243,9 @@ export function tick(){
     teahouseCount:totalBuildingCount('teahouse')
   });
   S.cohesion=clamp(S.cohesion+(cohesionWhy.target-S.cohesion)*0.04,0,100);
+
+  const done=advanceResearch(S,P.filter(isWorker).length);
+  if(done)chron(`溪谷掌握了${TECHS[done].n}：${TECHS[done].h}。`,'event');
 
   pushHist();
   for(const p of P)if(random()<0.4)assignTarget(p);
