@@ -283,7 +283,7 @@ function renderDilemma(){
 }
 $('dlgO').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||!S.pending)return;
-  if(b.id==='dlgLater'){dilemmaDeferred=true;$('dlg').hidden=true;$('pendingBtn').hidden=false;const el=dlgReturnFocus;dlgReturnFocus=null;if(el&&typeof el.focus==='function')el.focus({preventScroll:true});dirty=true;return;}
+  if(b.id==='dlgLater'){dilemmaDeferred=true;dlgKey='';$('dlg').hidden=true;$('pendingBtn').hidden=false;const el=dlgReturnFocus;dlgReturnFocus=null;if(el&&typeof el.focus==='function')el.focus({preventScroll:true});dirty=true;return;}
   if(b.id==='dlgDone'){S.pending=null;dilemmaDeferred=false;dirty=true;updateUI();return;}
   const o=DILEMMAS[S.pending.k].opts(S.pending.d)[+b.dataset.i];if(!o||(o.ok&&!o.ok()))return;
   const r=o.go()||'就这么定了。';S.pending.res=r;
