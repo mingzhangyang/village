@@ -33,7 +33,8 @@ export function describeVillage(state,v){
   const V=MAP.V[v],ps=state.people.filter(p=>p.village===v);
   if(v===ISLE&&!isSettled(state)&&!ps.length)return describeIsle(state);
   const kids=ps.filter(p=>p.job==='child').length,elders=ps.filter(p=>p.job==='elder').length;
-  const jobs={};for(const p of ps)if(isWorker(p))jobs[p.job]=(jobs[p.job]||0)+1;
+  const workers=ps.filter(isWorker);
+  const jobs={};for(const p of workers)jobs[p.job]=(jobs[p.job]||0)+1;
   const jobText=Object.entries(jobs).sort((a,b)=>b[1]-a[1]).map(([j,n])=>`${JOBS[j].n} ${n}`).join('、')||'没有劳力';
   const built=(state.built||[]).filter(b=>b.v===v).map(levelName);
   const homes=new Set(ps.map(p=>p.home)).size;
@@ -43,7 +44,7 @@ export function describeVillage(state,v){
       ['人口',`${ps.length} 人（${ps.length-kids-elders} 劳力，${kids} 孩童，${elders} 长者）`],
       ['职业',jobText],
       ['平均幸福',ps.length?String(Math.round(avg(ps,p=>p.happiness))):'—'],
-      ['平均技能',ps.length?String(Math.round(avg(ps.filter(isWorker),p=>p.skill))):'—'],
+      ['平均技能',workers.length?String(Math.round(avg(workers,p=>p.skill))):'—'],
       ['住户',`${homes} 户 / ${V.slots.length} 处宅基地`],
       ['建筑',built.length?built.join('、'):'还没有']
     ],

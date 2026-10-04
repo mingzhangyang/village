@@ -164,6 +164,15 @@ describe('economy', () => {
     expect(market.merchant.lastIncome - baseIncome).toBeCloseTo(0.3 * 0.3, 8);
   });
 
+  it('adds market upgrade units before applying the merchant income multiplier', () => {
+    for (const [level, expectedFactor] of [[1, 1.3], [2, 1.45], [3, 1.6]]) {
+      const world = createTradeWorld(809 + level, { marketLevel: level });
+      for (const p of world.state.people) p.wealth = 0;
+      tick();
+      expect(world.merchant.lastIncome, `market level ${level}`).toBeCloseTo(0.3 * expectedFactor, 8);
+    }
+  });
+
 
   it('keeps economy outputs finite across all food policies', () => {
     for (const [index, policy] of ['need', 'equal', 'work', 'market'].entries()) {

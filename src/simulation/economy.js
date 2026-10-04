@@ -73,8 +73,8 @@ export function tick(){
       case 'woodcutter':return frontier*techMult(S,'wood');
       case 'miner':return frontier*techMult(S,'mine');
       case 'craftsman':return pooledFactor(p);
-      case 'merchant':return pooledFactor(p)*(S.caravan>0?2.5:1)
-        *(1+0.3*Math.min(2,buildingCount(p.village,'market')));
+      case 'merchant':return frontier*techMult(S,'merchant')*(S.caravan>0?2.5:1)
+        *(1+0.3*(Math.min(2,buildingCount(p.village,'market'))+upgradeOf(p.village,'market')));
       default:return frontier;
     }
   };

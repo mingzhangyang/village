@@ -31,6 +31,14 @@ describe('map inspector', () => {
     expect(card.rows.find(r => r[0] === '人口')[1]).toContain(`${residents} 人`);
   });
 
+  it('shows no average worker skill when a village has residents but no workers', () => {
+    const state = world();
+    const residents = state.people.filter(p => p.village === 'grain');
+    for (const [index, p] of residents.entries()) p.job = index % 2 ? 'child' : 'elder';
+    const card = describeVillage(state, 'grain');
+    expect(card.rows.find(r => r[0] === '平均技能')[1]).toBe('—');
+  });
+
   it('lists the people living in a house', () => {
     const state = world();
     const p = state.people.find(q => q.partner);
