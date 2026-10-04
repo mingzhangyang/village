@@ -3,7 +3,7 @@ import { MAP, ISLE, VKEYS, ALL_VKEYS } from '../world/map.js';
 import { YEAR } from './clock.js';
 import { random, rand, clamp } from './random.js';
 import { hasTech, TECHS } from './tech.js';
-import { freeSlot, log } from './population.js';
+import { freeSlot, homeTile, log } from './population.js';
 
 export const FRONTIER={
   tech:'searoute',
@@ -38,7 +38,8 @@ export const activeVillages=state=>isSettled(state)?ALL_VKEYS:VKEYS;
 
 const worker=p=>p.job!=='child'&&p.job!=='elder';
 export const islanders=state=>state.people.filter(p=>p.village===ISLE);
-export const islandAdults=state=>islanders(state).filter(worker);
+// 健康已经归零的人当天还没被移出名单，但已经不能算劳力了。
+export const islandAdults=state=>islanders(state).filter(p=>worker(p)&&p.health>0);
 export function islandMorale(state){
   const adults=islandAdults(state);
   return adults.length?adults.reduce((t,p)=>t+p.happiness,0)/adults.length:0;
@@ -98,6 +99,9 @@ export function pickSettlers(state){
   return chosen;
 }
 
+// 换了住处的人径直走向新家（不消耗随机数）。
+function goHome(p){const t=homeTile(p);p.tx=t.i;p.ty=t.j;}
+
 // 已经住在 v 的伴侣或父母的宅基地；没有时返回 null。
 function familyHome(state,p,v){
   const q=state.people.find(q=>q!==p&&q.village===v&&(q.id===p.partner||p.parents.includes(q.id)));
@@ -113,7 +117,7 @@ export function launchExpedition(state){
   let homes=0;
   for(const p of settlers){
     const h=familyHome(state,p,ISLE);
-    origin[p.id]=p.village;p.village=ISLE;p.home=h!=null?h:homes++%slots;
+    origin[p.id]=p.village;p.village=ISLE;p.home=h!=null?h:homes++%slots;goHome(p);
     log(p,'登上大船，跟着远征队去开拓南屿');
   }
   state.frontier={stage:'pioneer',start:state.day,origin,tries:((state.frontier&&state.frontier.tries)||0)+1};
@@ -157,7 +161,7 @@ export function frontierTick(state){
 export function returnHome(state,p,origin=(state.frontier&&state.frontier.origin)||{}){
   const v=[p.id,p.partner,...p.parents].map(id=>origin[id]).find(k=>VKEYS.includes(k))||'bay';
   const h=familyHome(state,p,v);
-  p.village=v;p.home=h!=null?h:freeSlot(v);
+  p.village=v;p.home=h!=null?h:freeSlot(v);goHome(p);
   return v;
 }
 

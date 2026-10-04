@@ -11,7 +11,7 @@ import { configureEconomy, pushHist, tick } from './simulation/economy.js';
 import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './simulation/explainability.js';
 import { createChallenges } from './simulation/challenges.js';
 import { BUILDS, buildingStats, statOf, totalBonus, granaryCapacity, investedCost, levelOf, levelName, upgradeBlock, upgradeBuilding } from './simulation/buildings.js';
-import { FRONTIER, frontierStage, isSettled, isPioneering, isleVisible, activeVillages, islanders, islandAdults, islandMorale, expeditionChecks, expeditionReady, isVolunteer, pickSettlers, launchExpedition, returnHome, retryLeft, hardshipFor } from './simulation/frontier.js';
+import { FRONTIER, canMine, frontierStage, isSettled, isPioneering, isleVisible, activeVillages, islanders, islandAdults, islandMorale, expeditionChecks, expeditionReady, isVolunteer, pickSettlers, launchExpedition, returnHome, retryLeft, hardshipFor } from './simulation/frontier.js';
 import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, researchStall, techNeeds, startResearch, cancelResearch } from './simulation/tech.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
 
@@ -49,7 +49,7 @@ const SEEDS=[
     st:()=>S.mine?'已发现':'',dis:()=>S.mine,on:()=>false,
     go(){
       S.mine=true;chron('有人在山脚下发现了一条矿脉。','event');
-      const ws=S.people.filter(isWorker).sort((a,b)=>a.wealth-b.wealth);let n=0;
+      const ws=S.people.filter(p=>isWorker(p)&&canMine(S,p)).sort((a,b)=>a.wealth-b.wealth);let n=0;
       for(const p of ws){if(n>=Math.max(2,Math.ceil(ws.length*0.25)))break;if(n<2||random()<0.35){p.job='miner';p.skill*=0.5;log(p,'听说发现了矿脉，扛起镐头当了矿工');n++;}}
     }},
   {k:'immigrants',n:'迎来移民',d:'五到七位陌生人前来定居',cd:20,
@@ -185,13 +185,13 @@ const DILEMMAS={
     ]
   },
   cave:{
-    when:()=>S.mine&&!S.mineClosed&&S.people.some(p=>p.job==='miner')?{}:null,
+    when:()=>S.mine&&!S.mineClosed&&S.people.some(p=>p.job==='miner'&&canMine(S,p))?{}:null,
     title:()=>'矿洞的裂缝',
     text:()=>'矿工们发现主矿洞顶上出现了一道裂缝。停工整修十日会少挣不少钱，继续开采则可能出事。',
     opts:()=>[
       {t:'停工整修十日',h:'矿工十日没有收入',go(){S.mineClosed=10;return '矿工们放下镐头，开始加固矿洞。';}},
       {t:'继续开采',h:'不耽误挣钱，但有风险',go(){
-        const ms=S.people.filter(p=>p.job==='miner');
+        const ms=S.people.filter(p=>p.job==='miner'&&canMine(S,p));
         if(ms.length&&random()<0.45){const m=pick(ms);m.health-=rand(50,85);log(m,'在矿洞塌方中受了重伤');for(const q of ms)q.happiness=clamp(q.happiness-10,0,100);return `矿洞塌了一角，${m.name}被压在石头下，受了重伤。`;}
         return '裂缝没有再扩大，大家松了一口气。';}}
     ]
@@ -650,7 +650,7 @@ $('fWatch').addEventListener('click',()=>{
 /* ---------------- 地图绘制 ---------------- */
 const cv=$('map'),ctx=cv.getContext('2d');bindContext(ctx);
 const view={w:0,h:0,dpr:1,zoom:1,panX:0,panY:0,tw:30,ox:0,oy:0};
-let tool='look',buildSel='granary',hoverPt=null,moveSrc=null,dragGhost=null;
+let tool='look',buildSel='granary',hoverPt=null,moveSrc=null,dragGhost=null,kbTile=null;
 let theme={label:'#fff',ink:'#263022',line:'#dfe2d2',accent:'#4f7136',accentInk:'#fff',dark:false};
 let houses=new Set();
 function computeHouses(){
@@ -727,6 +727,11 @@ function draw(now){
       poly(hot?(ok?'rgba(255,255,255,.7)':'rgba(200,80,50,.45)'):(tool==='raze'?'rgba(200,80,50,.28)':'rgba(255,255,255,.3)'),x,y-hh*0.86,x+hw*0.86,y,x,y+hh*0.86,x-hw*0.86,y);
       if(hot&&ok){ctx.strokeStyle=theme.accent;ctx.lineWidth=2;ctx.stroke();}
     }
+  }
+  if(kbTile&&document.activeElement===cv){
+    const [x,y]=iso(kbTile.i,kbTile.j);
+    ctx.beginPath();ctx.moveTo(x,y-hh);ctx.lineTo(x+hw,y);ctx.lineTo(x,y+hh);ctx.lineTo(x-hw,y);ctx.closePath();
+    ctx.strokeStyle=theme.accent;ctx.lineWidth=2.5;ctx.stroke();
   }
   const glow=dark?[]:null;
   for(const t of MAP.all){
@@ -1062,6 +1067,25 @@ function cancelDrag(){drag=null;dragGhost=null;}
 cv.addEventListener('pointercancel',cancelDrag);
 cv.addEventListener('lostpointercapture',cancelDrag);
 cv.addEventListener('pointerleave',()=>{if(!drag)hoverPt=null;});
+// 键盘操作：方向键在地块之间移动光标，回车或空格等同于点一下光标处。
+const KB_STEP={ArrowUp:[-1,-1],ArrowDown:[1,1],ArrowLeft:[-1,1],ArrowRight:[1,-1]};
+const kbVisible=t=>t&&!(t.isle&&!isleVisible(S));
+cv.addEventListener('focus',()=>{if(!kbVisible(kbTile))kbTile=MAP.V.grain.center;});
+cv.addEventListener('keydown',e=>{
+  if(!kbTile)kbTile=MAP.V.grain.center;
+  const st=KB_STEP[e.key];
+  if(st){
+    e.preventDefault();
+    // 跳过海面，最多往前找几格，找不到就原地不动。
+    for(let k=1;k<=6;k++){const t=MAP.at(kbTile.i+st[0]*k,kbTile.j+st[1]*k);if(kbVisible(t)){kbTile=t;break;}}
+    const [x,y]=iso(kbTile.i,kbTile.j);hoverPt={x,y};return;
+  }
+  if(e.key==='Enter'||e.key===' '){
+    e.preventDefault();
+    const [x,y]=iso(kbTile.i,kbTile.j);tap({x,y:y-view.tw*0.1});
+  }
+});
+cv.addEventListener('blur',()=>{hoverPt=null;});
 /* ---------------- 点选信息卡 ---------------- */
 const labelHits=[];
 let infoTarget=null,infoReturn=null;
@@ -1113,8 +1137,10 @@ function openInfo(target,pt){
 }
 function closeInfo(){
   const box=$('info');if(box.hidden)return;
+  // 先判断焦点是否在卡片里：隐藏之后浏览器会把焦点丢到 body 上。
+  const had=box.contains(document.activeElement);
   box.hidden=true;infoTarget=null;
-  if(infoReturn&&box.contains(document.activeElement)&&typeof infoReturn.focus==='function')infoReturn.focus({preventScroll:true});
+  if(infoReturn&&had&&typeof infoReturn.focus==='function')infoReturn.focus({preventScroll:true});
   infoReturn=null;
 }
 $('infoX').addEventListener('click',closeInfo);

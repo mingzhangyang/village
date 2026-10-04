@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MAP, ISLE, VKEYS, ALL_VKEYS } from '../src/world/map.js';
 import { YEAR } from '../src/simulation/clock.js';
 import { configureEconomy, tick } from '../src/simulation/economy.js';
-import { makePerson, seedPopulation, remove } from '../src/simulation/population.js';
+import { chooseJob, homeTile, makePerson, seedPopulation, remove } from '../src/simulation/population.js';
 import { newState, normalizeState, setState } from '../src/simulation/state.js';
 import {
   FRONTIER, activeVillages, canMine, expeditionChecks, expeditionReady, frontierTick, hardshipFor, islandAdults,
@@ -148,6 +148,55 @@ describe('the pioneer phase', () => {
     frontierTick(state);
     expect(state.frontier.stage).toBe('failed');
     together();
+  });
+
+  it('does not count workers a storm has just killed', () => {
+    const state = readyWorld();
+    launchExpedition(state);
+    state.day += FRONTIER.pioneerDays;
+    const adults = islandAdults(state);
+    for (const p of adults.slice(0, adults.length - FRONTIER.minAdults + 1)) p.health = 0;
+    expect(islandAdults(state).length).toBe(FRONTIER.minAdults - 1);
+    expect(frontierTick(state).event).toBe('failed');
+  });
+
+  it('sends settlers and returnees walking straight to their new homes', () => {
+    const state = readyWorld();
+    const team = launchExpedition(state);
+    for (const p of team) {
+      const h = homeTile(p);
+      expect([p.tx, p.ty]).toEqual([h.i, h.j]);
+    }
+    const adults = islandAdults(state);
+    for (const p of adults.slice(0, adults.length - FRONTIER.minAdults + 1)) remove(p, 'left');
+    frontierTick(state);
+    for (const p of team.filter(q => state.people.includes(q))) {
+      expect(p.village).not.toBe(ISLE);
+      const h = homeTile(p);
+      expect([p.tx, p.ty]).toEqual([h.i, h.j]);
+    }
+  });
+
+  it('keeps pioneers and mainlanders from meeting across the sea', () => {
+    const state = readyWorld(53);
+    const team = launchExpedition(state);
+    expect(team.length).toBeGreaterThan(0);
+    const before = new Map(state.people.map(p => [p.id, { ...p.rel }]));
+    for (let day = 0; day < 20; day += 1) tick();
+    expect(state.frontier.stage).toBe('pioneer');
+    const mainland = new Set(state.people.filter(q => q.village !== ISLE).map(q => q.id));
+    for (const p of state.people.filter(q => q.village === ISLE)) {
+      for (const k of Object.keys(p.rel)) {
+        if (mainland.has(+k)) expect(p.rel[k], `${p.name}→${k}`).toBeLessThanOrEqual(before.get(p.id)[k] ?? 0);
+      }
+    }
+  });
+
+  it('never turns a pioneer into a miner', () => {
+    const state = readyWorld();
+    state.mine = true;
+    const team = launchExpedition(state);
+    for (let k = 0; k < 200; k += 1) for (const p of team) expect(chooseJob(p)).not.toBe('miner');
   });
 
   it('fails at the end of the term if morale is too low', () => {

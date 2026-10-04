@@ -40,7 +40,7 @@ export function foodDays(){
   const S = getState();let n=0;for(const p of S.people)n+=need(p);return n>0?S.food/n:999;}
 export function chooseJob(p){
   const S = getState();
-  if(S.mine&&random()<0.22)return 'miner';
+  if(S.mine&&canMine(S,p)&&random()<0.22)return 'miner';
   if(S.people.length&&foodDays()<20&&random()<0.55)return p.village==='bay'?'fisher':'farmer';
   const T={grain:[['farmer',.66],['craftsman',.2],['merchant',.14]],pine:[['woodcutter',.5],['craftsman',.33],['farmer',.17]],bay:[['fisher',.55],['merchant',.28],['craftsman',.17]],isle:[['farmer',.42],['fisher',.42],['craftsman',.16]]}[p.village];
   let x=random();for(const [j,w] of T){if((x-=w)<0)return j;}return T[0][0];

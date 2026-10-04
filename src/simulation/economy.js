@@ -169,11 +169,14 @@ export function tick(){
 
   // 来往
   const byV={};for(const v of ALL_VKEYS)byV[v]=[];for(const p of P)byV[p.village].push(p);
+  // 开荒期间隔着海，开拓者只能和岛上的人来往，本岛居民也碰不到他们。
+  const mainland=isPioneering(S)?P.filter(q=>q.village!==ISLE):P;
   for(const p of P){
+    const wide=p.village===ISLE&&isPioneering(S)?byV[ISLE]:mainland;
     let k=(has(p,'好客')?1.6:has(p,'内向')?0.5:1)*(S.festival>0?2:1)*(buildingCount(p.village,'teahouse')?TEA_SOCIAL[Math.max(1,statOf(bs,p.village,'teahouse').max)]:1),times=0;
     while(k>0){if(random()<Math.min(1,k)*0.6)times++;k-=1;}
     for(let t=0;t<times;t++){
-      const q=pick(random()<0.75?byV[p.village]:P);if(!q||q===p)continue;
+      const q=pick(random()<0.75?byV[p.village]:wide);if(!q||q===p)continue;
       let d=rand(-1.5,5);
       if(p.happiness<35||q.happiness<35)d-=3;
       if(has(p,'急躁'))d+=rand(-4,1);
@@ -238,7 +241,7 @@ export function tick(){
     if(random()>(fd2<15&&p.job!=='farmer'&&p.job!=='fisher'?0.03:0.004))continue;
     let nj=null;
     if(fd2<15&&p.job!=='farmer'&&p.job!=='fisher'&&random()<0.6)nj=p.village==='bay'?'fisher':'farmer';
-    else if(S.mine&&p.job!=='miner'&&p.wealth<avgW*0.7&&random()<0.5)nj='miner';
+    else if(S.mine&&canMine(S,p)&&p.job!=='miner'&&p.wealth<avgW*0.7&&random()<0.5)nj='miner';
     else if(p.lastIncome<avgInc*0.45)nj=chooseJob(p);
     if(nj&&nj!==p.job){p.job=nj;p.skill*=0.5;log(p,`改行做了${JOBS[nj].n}`);}
   }
