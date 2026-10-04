@@ -3,7 +3,7 @@ import { JOBS, TRAITS, SURN, GIVEN, SKIN, HAIR } from './constants.js';
 import { YEAR, ageY } from './clock.js';
 import { random, rand, randi, pick, clamp } from './random.js';
 import { getState, markStateDirty } from './state.js';
-import { canMine } from './frontier.js';
+import { canDepart, canMine } from './frontier.js';
 import { defaultSurnameForNewPerson, knownPersonSurname, migratedFamilyName, surnameFromName } from './names.js';
 
 export const ta=p=>p.gender==='女'?'她':'他';
@@ -121,7 +121,9 @@ export function notify(p,text){
 }
 export function remove(p,status,cause){
   const S = getState();
-  const i=S.people.indexOf(p);if(i<0)return;S.people.splice(i,1);
+  // 所有普通离开都经过这一道边界；开荒期南屿居民只能由 frontier.returnHome/failExpedition 处理。
+  if(status==='left'&&!canDepart(S,p))return false;
+  const i=S.people.indexOf(p);if(i<0)return false;S.people.splice(i,1);
   p.status=status;p.endDay=S.day;p.cause=cause||'';
   if(status==='dead'){
     S.deaths++;
@@ -136,6 +138,7 @@ export function remove(p,status,cause){
     else if(r>=70&&status==='dead'){q.happiness-=8;log(q,`送别了挚友${p.name}`);}
   }
   S.dead.push(p);if(S.dead.length>150)S.dead.shift();
+  return true;
 }
 export function nearestOf(list,h){if(!list.length)return null;let b=null,bd=1e9;for(let k=0;k<3;k++){const c=pick(list);const d=Math.hypot(c.i-h.i,c.j-h.j);if(d<bd){bd=d;b=c;}}return b;}
 export function assignTarget(p){

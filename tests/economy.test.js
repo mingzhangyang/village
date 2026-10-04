@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { ISLE } from '../src/world/map.js';
 import { YEAR } from '../src/simulation/clock.js';
 import { configureEconomy, tick } from '../src/simulation/economy.js';
 import { makePerson, seedPopulation } from '../src/simulation/population.js';
 import { newState, setState } from '../src/simulation/state.js';
+import { FRONTIER } from '../src/simulation/frontier.js';
+import { techMult } from '../src/simulation/tech.js';
 
 function configureTestEconomy(overrides = {}) {
   configureEconomy({
@@ -27,6 +30,37 @@ function createNonWorker(state, { wealth, village = 'grain' }) {
   });
   person.job = 'elder';
   return person;
+}
+
+function createTradeWorld(seed, { stage = 'settled', tech = {} } = {}) {
+  const state = newState(seed);
+  setState(state);
+  state.food = 100;
+  state.treasury = 0;
+  state.tax = 0;
+  state.caravan = 0;
+  state.tech = { ...tech };
+  state.frontier = stage === 'pioneer'
+    ? { stage: 'pioneer', start: state.day, origin: {}, tries: 1 }
+    : { stage: 'settled', day: state.day, tries: 1 };
+
+  const jobs = ['merchant', 'craftsman', 'woodcutter', 'woodcutter', 'woodcutter', 'woodcutter'];
+  const people = jobs.map(job => {
+    const person = makePerson({
+      village: ISLE,
+      age: 30 * YEAR,
+      wealth: 100,
+      happiness: 70,
+      skill: 50,
+    });
+    person.job = job;
+    person.health = 100;
+    person.fed = 1;
+    person.traits = [];
+    return person;
+  });
+  configureTestEconomy({ foodCapacity: () => 1000 });
+  return { state, merchant: people[0], craftsman: people[1] };
 }
 
 afterEach(() => {
@@ -84,6 +118,32 @@ describe('economy', () => {
 
     expect(rich.fed).toBeCloseTo(1, 8);
     expect(poor.fed).toBe(0);
+  });
+
+  it('applies pioneer work loss to the full craftsman and merchant income chain', () => {
+    const normal = createTradeWorld(606);
+    tick();
+    const normalMerchant = normal.merchant.lastIncome;
+    const normalCraftsman = normal.craftsman.lastIncome;
+
+    const pioneer = createTradeWorld(606, { stage: 'pioneer' });
+    tick();
+
+    expect(pioneer.merchant.lastIncome / normalMerchant).toBeCloseTo(FRONTIER.pioneerWork, 8);
+    expect(pioneer.craftsman.lastIncome / normalCraftsman).toBeCloseTo(FRONTIER.pioneerWork, 8);
+  });
+
+  it('applies craft and merchant technology multipliers to pooled earnings too', () => {
+    const base = createTradeWorld(707);
+    tick();
+    const baseMerchant = base.merchant.lastIncome;
+    const baseCraftsman = base.craftsman.lastIncome;
+
+    const upgraded = createTradeWorld(707, { tech: { ledger: 0 } });
+    tick();
+
+    expect(upgraded.merchant.lastIncome / baseMerchant).toBeCloseTo(techMult(upgraded.state, 'merchant'), 8);
+    expect(upgraded.craftsman.lastIncome / baseCraftsman).toBeCloseTo(techMult(upgraded.state, 'craft'), 8);
   });
 
   it('keeps economy outputs finite across all food policies', () => {

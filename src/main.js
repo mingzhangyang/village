@@ -11,7 +11,7 @@ import { configureEconomy, pushHist, tick } from './simulation/economy.js';
 import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './simulation/explainability.js';
 import { createChallenges } from './simulation/challenges.js';
 import { BUILDS, buildingStats, statOf, totalBonus, granaryCapacity, investedCost, levelOf, levelName, upgradeBlock, upgradeBuilding } from './simulation/buildings.js';
-import { FRONTIER, canMine, frontierStage, isSettled, isPioneering, isleVisible, activeVillages, islanders, islandAdults, islandMorale, expeditionChecks, expeditionReady, isVolunteer, pickSettlers, launchExpedition, returnHome, retryLeft, hardshipFor } from './simulation/frontier.js';
+import { FRONTIER, canMine, canDepart, frontierStage, isSettled, isPioneering, isleVisible, activeVillages, islanders, islandAdults, islandMorale, expeditionChecks, expeditionReady, isVolunteer, pickSettlers, launchExpedition, returnHome, retryLeft, hardshipFor } from './simulation/frontier.js';
 import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, researchStall, techNeeds, startResearch, cancelResearch } from './simulation/tech.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
 
@@ -208,13 +208,13 @@ const DILEMMAS={
     ]
   },
   wander:{
-    when(){const ps=S.people.filter(q=>migrationBreakdown(q).wanderEligible);return ps.length?{p:pick(ps).id}:null;},
+    when(){const ps=S.people.filter(q=>migrationBreakdown(q).wanderEligible&&canDepart(S,q));return ps.length?{p:pick(ps).id}:null;},
     title:()=>'想出去闯闯的年轻人',
     text:d=>{const p=byId(d.p);return `${p.name}（${ageY(p)}岁，${JOBS[p.job].n}）说岛上的日子一眼望得到头，想去外面闯一闯。`;},
     opts:d=>{const p=byId(d.p),t=p?ta(p):'他';return [
       {t:'挽留：公库给 20 金安家',h:`${t}会留下，心里也更踏实`,ok:()=>S.treasury>=20,go(){
         S.treasury-=20;const q=living(d.p);if(!q)return '';q.wealth+=20;q.happiness=clamp(q.happiness+15,0,100);log(q,'被大家挽留，决定留在溪谷');return `${q.name}收下了安家钱，决定留下来。`;}},
-      {t:'祝一路顺风',h:`${t}会离开溪谷`,go(){const q=living(d.p);if(!q)return '';remove(q,'left','wander');return `${q.name}背上行囊，坐船离开了溪谷。`;}},
+      {t:'祝一路顺风',h:`${t}会离开溪谷`,go(){const q=living(d.p);if(!q)return '';if(!remove(q,'left','wander'))return '开拓期间南屿居民不能通过普通出走离岛。';return `${q.name}背上行囊，坐船离开了溪谷。`;}},
       {t:`让${t}再想想`,h:'也许过阵子就好了，也许不会',go(){const q=living(d.p);if(q){q.happiness=clamp(q.happiness-3,0,100);log(q,'想出去闯荡，被劝再想想');}return `${t}点点头，没再说什么。`;}}
     ];}
   },

@@ -1,5 +1,5 @@
 import { MAP, ISLE, ALL_VKEYS } from '../world/map.js';
-import { workFactor, hardshipFor, frontierBirthCap, frontierTick, isPioneering, canMine } from './frontier.js';
+import { workFactor, hardshipFor, frontierBirthCap, frontierTick, isPioneering, canDepart, canMine } from './frontier.js';
 import { JOBS } from './constants.js';
 import { YEAR, seasonIndex, ageY } from './clock.js';
 import { random, rand, pick, clamp, has } from './random.js';
@@ -56,18 +56,30 @@ export function tick(){
   const bs=buildingStats(S.built);
   const wellLv=v=>buildingCount(v,'well')?Math.max(1,statOf(bs,v,'well').max):0;
   const upgradeOf=(v,b)=>buildingCount(v,b)?statOf(bs,v,b).bonus:0;
+  const laborFactor=p=>(0.6+p.skill/125)*(0.4+0.6*p.health/100)*(p.fed<0.8?0.75:1)*(has(p,'勤劳')?1.15:1);
+  // 一份职业产出因子贯穿基础收入和交易池分成，避免科技、开荒或市场加成只作用到收入的一小部分。
+  const jobFactor=p=>{
+    const frontier=workFactor(S,p);
+    switch(p.job){
+      case 'woodcutter':return frontier*techMult(S,'wood');
+      case 'miner':return frontier*techMult(S,'mine');
+      case 'craftsman':return frontier*techMult(S,'craft');
+      case 'merchant':return frontier*techMult(S,'merchant')*(S.caravan>0?2.5:1)*(1+0.3*(Math.min(2,buildingCount(p.village,'market'))+upgradeOf(p.village,'market')));
+      default:return frontier;
+    }
+  };
   const inc=new Map(),prod=new Map();let food=0;
   for(const p of P){
     if(!isWorker(p)){if(p.job==='child')p.skill=clamp(p.skill+0.05*(S.school?3:1)*skillK,0,100);continue;}
-    const k=(0.6+p.skill/125)*(0.4+0.6*p.health/100)*(p.fed<0.8?0.75:1)*(has(p,'勤劳')?1.15:1)*workFactor(S,p);
+    const labor=laborFactor(p),frontier=workFactor(S,p),factor=jobFactor(p);
     let x=0;
     switch(p.job){
-      case 'farmer':{const f=0.46*farmK*k*(S.canal&&p.village!==ISLE?1.35:1);food+=f;prod.set(p,f);break;}
-      case 'fisher':{const f=0.34*fishK*k;food+=f;prod.set(p,f);break;}
-      case 'woodcutter':x=0.95*k*techMult(S,'wood');break;
-      case 'miner':x=S.mineClosed>0||!canMine(S,p)?0:2.3*k*techMult(S,'mine');break;
-      case 'craftsman':x=0.35*k*techMult(S,'craft');break;
-      case 'merchant':x=0.3*k*techMult(S,'merchant')*(S.caravan>0?2.5:1)*(1+0.3*(Math.min(2,buildingCount(p.village,'market'))+upgradeOf(p.village,'market')));break;
+      case 'farmer':{const f=0.46*farmK*labor*frontier*(S.canal&&p.village!==ISLE?1.35:1);food+=f;prod.set(p,f);break;}
+      case 'fisher':{const f=0.34*fishK*labor*frontier;food+=f;prod.set(p,f);break;}
+      case 'woodcutter':x=0.95*labor*factor;break;
+      case 'miner':x=S.mineClosed>0||!canMine(S,p)?0:2.3*labor*factor;break;
+      case 'craftsman':x=0.35*labor*factor;break;
+      case 'merchant':x=0.3*labor*factor;break;
     }
     inc.set(p,x);
     p.skill=clamp(p.skill+0.12*(has(p,'好学')?1.6:1)*skillK*(1-p.skill/100),0,100);
@@ -108,7 +120,7 @@ export function tick(){
   const fcap=foodCapacity();S.rot=S.food>fcap?(S.food-fcap)*0.02*techMult(S,'rot'):0;S.food-=S.rot;
   const merch=P.filter(p=>p.job==='merchant'),crafts=P.filter(p=>p.job==='craftsman');
   const mcut=merch.length?foodPool*0.08:0;
-  for(const m of merch)inc.set(m,(inc.get(m)||0)+mcut/merch.length);
+  for(const m of merch)inc.set(m,(inc.get(m)||0)+mcut/merch.length*jobFactor(m));
   const rest=foodPool-mcut;
   if(food>0){for(const [p,f] of prod)inc.set(p,(inc.get(p)||0)+rest*f/food);trades+=prod.size;}else S.treasury+=rest;
 
@@ -116,8 +128,8 @@ export function tick(){
   let goods=0;
   for(const p of P){if(p.job==='child')continue;const w=Math.max(0,p.wealth);const sp=Math.min(w,0.15+w*0.012);p.wealth-=sp;goods+=sp;if(sp>0.02)trades++;}
   const cw=crafts.reduce((t,p)=>t+0.5+p.skill/100,0);
-  for(const p of crafts)inc.set(p,(inc.get(p)||0)+goods*0.45*(0.5+p.skill/100)/cw);
-  for(const p of merch)inc.set(p,(inc.get(p)||0)+goods*0.15/merch.length);
+  for(const p of crafts)inc.set(p,(inc.get(p)||0)+goods*0.45*(0.5+p.skill/100)/cw*jobFactor(p));
+  for(const p of merch)inc.set(p,(inc.get(p)||0)+goods*0.15/merch.length*jobFactor(p));
 
   // 收税与公库
   for(const [p,x] of inc){const t=x*S.tax;S.treasury+=t;p.wealth+=x-t;p.lastIncome=x;}
@@ -164,7 +176,7 @@ export function tick(){
     });
     p.happiness=clamp(p.happiness+(why.rawTarget-p.happiness)*0.07+rand(-0.8,0.8),0,100);
     if(p.happiness<MIGRATION_RULES.sadHappinessThreshold)p.sadDays++;else p.sadDays=Math.max(0,p.sadDays-1);
-    if(p.sadDays===MIGRATION_RULES.warningSadDays&&p.job!=='child')notify(p,'愁苦了很久，再这样下去可能会离开溪谷');
+    if(p.sadDays===MIGRATION_RULES.warningSadDays&&p.job!=='child'&&canDepart(S,p))notify(p,'愁苦了很久，再这样下去可能会离开溪谷');
   }
 
   // 来往
@@ -228,7 +240,7 @@ export function tick(){
     else if(p.age>58*YEAR&&random()<0.0006*(ageY(p)-57))cause='寿终';
     if(cause){remove(p,'dead',cause);continue;}
     const migration=migrationBreakdown(p);
-    if(migration.automaticEligible&&random()<migration.dailyChance)remove(p,'left');
+    if(migration.automaticEligible&&canDepart(S,p)&&random()<migration.dailyChance)remove(p,'left');
   }
   if(!P.length){chron('最后一个人也离开了。溪谷重归寂静。','death');S.paused=true;return;}
   const frontier=frontierTick(S);

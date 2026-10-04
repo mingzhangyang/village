@@ -5,7 +5,7 @@ import { configureEconomy, tick } from '../src/simulation/economy.js';
 import { chooseJob, homeTile, makePerson, seedPopulation, remove } from '../src/simulation/population.js';
 import { newState, normalizeState, setState } from '../src/simulation/state.js';
 import {
-  FRONTIER, activeVillages, canMine, expeditionChecks, expeditionReady, frontierTick, hardshipFor, islandAdults,
+  FRONTIER, activeVillages, canDepart, canMine, expeditionChecks, expeditionReady, frontierTick, hardshipFor, islandAdults,
   isVolunteer, isleVisible, launchExpedition, pickSettlers, retryLeft, workFactor,
 } from '../src/simulation/frontier.js';
 
@@ -130,6 +130,22 @@ describe('the pioneer phase', () => {
     expect(canMine(state, miner)).toBe(false);
     state.frontier = { stage: 'settled', day: state.day, tries: 1 };
     expect(canMine(state, miner)).toBe(true);
+  });
+
+  it('blocks every ordinary departure while a South Isle resident is pioneering', () => {
+    const state = readyWorld();
+    const team = launchExpedition(state);
+    const pioneer = team.find(p => p.job !== 'child');
+    const before = state.people.length;
+    expect(canDepart(state, pioneer)).toBe(false);
+    expect(remove(pioneer, 'left', 'wander')).toBe(false);
+    expect(state.people).toContain(pioneer);
+    expect(state.people).toHaveLength(before);
+
+    state.frontier = { stage: 'settled', day: state.day, tries: 1 };
+    expect(canDepart(state, pioneer)).toBe(true);
+    expect(remove(pioneer, 'left', 'wander')).toBe(true);
+    expect(state.people).not.toContain(pioneer);
   });
 
   it('keeps each family under one roof on the islet and back home', () => {

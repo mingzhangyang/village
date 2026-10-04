@@ -31,6 +31,8 @@ export const FRONTIER={
 export const frontierStage=state=>state&&state.frontier&&state.frontier.stage||null;
 export const isSettled=state=>frontierStage(state)==='settled';
 export const isPioneering=state=>frontierStage(state)==='pioneer';
+// 开荒期的南屿居民不能通过普通迁徙、出走等路径离开；返乡只能走远征专用流程。
+export const canDepart=(state,p)=>!(isPioneering(state)&&p.village===ISLE);
 // 地图上能看见南屿：掌握远洋航路之后，或已经出发过。
 export const isleVisible=state=>hasTech(state,FRONTIER.tech)||!!frontierStage(state);
 // 移民、建造、两难抉择等可以选到的聚落。
