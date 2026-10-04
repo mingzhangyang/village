@@ -83,13 +83,17 @@ export function pickSettlers(state){
   const chosen=[],byId=new Map(state.people.map(p=>[p.id,p]));
   let taken=0;
   const add=p=>{if(!p||chosen.includes(p))return;chosen.push(p);if(isVolunteer(p))taken++;};
+  // 大人连同自己年幼的孩子一起上船（包括伴侣与前任所生的孩子）。
+  const addWithKids=p=>{
+    add(p);
+    for(const id of p.children){const c=byId.get(id);if(c&&c.job==='child'&&c.village===p.village)add(c);}
+  };
   for(const p of volunteers(state)){
     if(taken>=FRONTIER.volunteers)break;
     if(chosen.includes(p))continue;
-    add(p);
+    addWithKids(p);
     const partner=byId.get(p.partner);
-    if(partner&&partner.village===p.village)add(partner);
-    for(const id of p.children){const c=byId.get(id);if(c&&c.job==='child'&&c.village===p.village)add(c);}
+    if(partner&&partner.village===p.village)addWithKids(partner);
   }
   return chosen;
 }
@@ -123,6 +127,8 @@ export function workFactor(state,p){
   if(isSettled(state))return p.job==='farmer'?1+FRONTIER.farmBonus:p.job==='fisher'?1+FRONTIER.fishBonus:1;
   return 1;
 }
+// 本岛矿洞只有本岛居民和已经定居的南屿居民能去；开荒期的开拓者不能出岛。
+export const canMine=(state,p)=>p.village!==ISLE||!isPioneering(state);
 export const hardshipFor=(state,p)=>isPioneering(state)&&p.village===ISLE?FRONTIER.hardship:0;
 export const frontierBirthCap=state=>isSettled(state)?FRONTIER.birthCap:0;
 

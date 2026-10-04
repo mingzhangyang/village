@@ -11,7 +11,7 @@ import { configureEconomy, pushHist, tick } from './simulation/economy.js';
 import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './simulation/explainability.js';
 import { createChallenges } from './simulation/challenges.js';
 import { BUILDS, buildingStats, statOf, totalBonus, granaryCapacity, investedCost, levelOf, levelName, upgradeBlock, upgradeBuilding } from './simulation/buildings.js';
-import { FRONTIER, frontierStage, isSettled, isPioneering, isleVisible, activeVillages, islanders, islandAdults, islandMorale, expeditionChecks, expeditionReady, pickSettlers, launchExpedition, returnHome, retryLeft, hardshipFor } from './simulation/frontier.js';
+import { FRONTIER, frontierStage, isSettled, isPioneering, isleVisible, activeVillages, islanders, islandAdults, islandMorale, expeditionChecks, expeditionReady, isVolunteer, pickSettlers, launchExpedition, returnHome, retryLeft, hardshipFor } from './simulation/frontier.js';
 import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, researchStall, techNeeds, startResearch, cancelResearch } from './simulation/tech.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
 
@@ -231,7 +231,7 @@ const DILEMMAS={
         const ps=islanders(S);
         for(const p of ps){p.happiness=clamp(p.happiness-6,0,100);for(const q of ps)if(q.id>p.id)changeRel(p,q,12);}
         return '开拓者们挤在一个窝棚里熬过了难关，彼此成了过命的交情。';}},
-      {t:'接回病弱的人',h:'健康低于 50 的人回到故乡，岛上人手会变少',go(){
+      {t:'接回病弱的人',h:'开荒期唯一能离岛的机会：健康低于 50 的人回到故乡，岛上人手会变少',go(){
         const back=islanders(S).filter(p=>p.health<50);
         if(!back.length)return '岛上没有病得太重的人，大家决定一起撑下去。';
         for(const p of back){returnHome(S,p);log(p,'病倒后被接回了故乡');assignTarget(p);}
@@ -332,15 +332,16 @@ function applyBuilt(){
   const open=isPioneering(S)||isSettled(S);
   for(const t of MAP.isle.tiles)if(t.orig==='field'?!isSettled(S):t.orig==='plaza'&&!open)t.type='grass';
   MAP.forest=MAP.all.filter(t=>t.type==='forest'&&!t.isle);
+  MAP.isle.forest=MAP.isle.tiles.filter(t=>t.type==='forest');
   recountB();colorKey='';terrainGen++;
 }
 function nearestVillage(fi,fj){let best=null,bd=1e9;for(const k of activeVillages(S)){const c=MAP.V[k].center,d=Math.hypot(c.i-fi,c.j-fj);if(d<bd){bd=d;best=k;}}return {k:best,d:bd};}
 function canPlace(t,b){
-  if(!t)return '这里是海。';
+  if(!t||(t.isle&&!isleVisible(S)))return '这里是海。';
+  if(t.isle&&!isSettled(S))return '南屿还没有开拓。';
   if(t.bld)return '这里已经有建筑了。';
   if(t.slot)return '这是村民盖房子的地方。';
   if(t.mine)return '这里是矿脉。';
-  if(t.isle&&!isSettled(S))return isleVisible(S)?'南屿还没有开拓。':'这里是海。';
   if(t.coast)return '这里是南屿的海岸渔场，不能盖房子。';
   if(t.type!=='grass'&&t.type!=='forest')return '这里不能盖房子。';
   const nv=nearestVillage(t.i,t.j);
@@ -599,7 +600,7 @@ function renderFrontierModal(){
       ?'远洋商船的水手说，东南海上有一座无人小岛，土地肥沃、鱼群密集。远征要倾全溪谷之力，开荒六十日。失败的话，投入的钱粮全部白费，还要休整两年才能再试。'
       :'老人们说，晴天时能望见东南海上有一座小岛，但没人有本事渡过去。先掌握远洋航路，才能找到它。';
     if(S.frontier&&S.frontier.tries)$('mdlX').textContent+=` 溪谷已经远征过 ${S.frontier.tries} 次。`;
-    html=checkList(checks)+`<button class="opt" data-act="launch"${ready?'':' disabled'}><b>扬帆出发</b><span>${ready?`${team.filter(isWorker).length} 位志愿者带着家人共 ${team.length} 人出发：${team.map(p=>p.name).join('、')}`:'所有条件都满足后才能出发。'}</span></button>`;
+    html=checkList(checks)+`<button class="opt" data-act="launch"${ready?'':' disabled'}><b>扬帆出发</b><span>${ready?`${team.filter(isVolunteer).length} 位志愿者带着家人共 ${team.length} 人出发：${team.map(p=>p.name).join('、')}`:'所有条件都满足后才能出发。'}</span></button>`;
   }
   html+='<button class="opt free" data-act="close"><b>关闭</b></button>';
   $('mdlO').innerHTML=html;
@@ -1070,8 +1071,10 @@ function spriteAt(pt){
   for(let k=MAP.all.length-1;k>=0;k--){
     const t=MAP.all[k];if(t.isle&&!show)continue;
     if(!t.bld&&!(t.slot&&houses.has(t)))continue;
-    const [x,y]=iso(t.i,t.j),hw=tw*(t.bld?0.42:0.3);
-    if(pt.x>=x-hw&&pt.x<=x+hw&&pt.y>=y-tw*(t.bld?0.75:0.55)&&pt.y<=y+tw*0.12)return t;
+    // 升级后的建筑画得更大（与 scene.js 的 drawBuilding 一致），点选范围也跟着放大。
+    const sc=t.bld?1+0.12*((t.blv||1)-1):1;
+    const [x,y]=iso(t.i,t.j),hw=tw*(t.bld?0.42:0.3)*sc;
+    if(pt.x>=x-hw&&pt.x<=x+hw&&pt.y>=y-tw*(t.bld?0.75:0.55)*sc&&pt.y<=y+tw*0.12)return t;
   }
   return null;
 }
@@ -1090,7 +1093,12 @@ function renderInfo(){
   if(c.people&&c.people.length)html+=`<div class="info-people">${c.people.map(p=>`<button data-person="${p.id}">${esc(p.name)}<em>${esc(p.meta)}</em></button>`).join('')}</div>`;
   if(c.text)html+=`<p class="info-text">${esc(c.text)}</p>`;
   if(c.actions&&c.actions.length)html+=`<div class="info-acts">${c.actions.map(a=>`<button class="btn primary" data-info="${a.act}"${a.disabled?' disabled':''}>${esc(a.label)}</button>${a.hint?`<small>${esc(a.hint)}</small>`:''}`).join('')}</div>`;
+  // 模拟每天都会刷新卡片；内容没变就不重建，变了也把键盘焦点还给原来那个按钮。
+  const body=$('infoB');if(_c.infoB===html)return;
+  const a=body.contains(document.activeElement)?document.activeElement:null;
+  const key=a&&(a.dataset.person?`[data-person="${a.dataset.person}"]`:a.dataset.info?`[data-info="${a.dataset.info}"]`:null);
   setH('infoB',html);
+  if(a){const b=key&&body.querySelector(key);(b&&!b.disabled?b:box).focus({preventScroll:true});}
 }
 function openInfo(target,pt){
   infoTarget=target;const box=$('info');
@@ -1123,7 +1131,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('info').hidden&&
 function tap(pt){
   if(tool==='build'){place(tileAt(pt),buildSel);return;}
   if(tool==='raze'){raze(tileAt(pt));return;}
-  if(tool==='upgrade'){upgrade(tileAt(pt));return;}
+  if(tool==='upgrade'){const sp=spriteAt(pt);upgrade(sp&&sp.bld?sp:tileAt(pt));return;}
   if(tool==='move'){
     if(!moveSrc){toast('先按住或点一下要搬家的人。',true);return;}
     const v=villageAtPt(pt);if(!v){toast('点一个村子附近的地方。',true);return;}

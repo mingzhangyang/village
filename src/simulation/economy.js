@@ -1,5 +1,5 @@
 import { MAP, ISLE, ALL_VKEYS } from '../world/map.js';
-import { workFactor, hardshipFor, frontierBirthCap, frontierTick, isPioneering } from './frontier.js';
+import { workFactor, hardshipFor, frontierBirthCap, frontierTick, isPioneering, canMine } from './frontier.js';
 import { JOBS } from './constants.js';
 import { YEAR, seasonIndex, ageY } from './clock.js';
 import { random, rand, pick, clamp, has } from './random.js';
@@ -65,7 +65,7 @@ export function tick(){
       case 'farmer':{const f=0.46*farmK*k*(S.canal&&p.village!==ISLE?1.35:1);food+=f;prod.set(p,f);break;}
       case 'fisher':{const f=0.34*fishK*k;food+=f;prod.set(p,f);break;}
       case 'woodcutter':x=0.95*k*techMult(S,'wood');break;
-      case 'miner':x=S.mineClosed>0?0:2.3*k*techMult(S,'mine');break;
+      case 'miner':x=S.mineClosed>0||!canMine(S,p)?0:2.3*k*techMult(S,'mine');break;
       case 'craftsman':x=0.35*k*techMult(S,'craft');break;
       case 'merchant':x=0.3*k*techMult(S,'merchant')*(S.caravan>0?2.5:1)*(1+0.3*(Math.min(2,buildingCount(p.village,'market'))+upgradeOf(p.village,'market')));break;
     }

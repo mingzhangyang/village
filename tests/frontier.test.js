@@ -5,7 +5,7 @@ import { configureEconomy, tick } from '../src/simulation/economy.js';
 import { makePerson, seedPopulation, remove } from '../src/simulation/population.js';
 import { newState, normalizeState, setState } from '../src/simulation/state.js';
 import {
-  FRONTIER, activeVillages, expeditionChecks, expeditionReady, frontierTick, hardshipFor, islandAdults,
+  FRONTIER, activeVillages, canMine, expeditionChecks, expeditionReady, frontierTick, hardshipFor, islandAdults,
   isVolunteer, isleVisible, launchExpedition, pickSettlers, retryLeft, workFactor,
 } from '../src/simulation/frontier.js';
 
@@ -107,6 +107,29 @@ describe('the pioneer phase', () => {
     expect(retryLeft(state)).toBe(FRONTIER.retryDays);
     expect(expeditionChecks(state).find(c => c.k === 'retry').ok).toBe(false);
     for (const p of team.filter(q => q.status === 'alive')) expect(p.village).toBe(origins[p.id]);
+  });
+
+  it('brings the young children of every qualified adult, partners included', () => {
+    const state = readyWorld();
+    const team = pickSettlers(state);
+    const partner = team.find(p => isVolunteer(p) && team.some(q => q.partner === p.id && team.indexOf(q) < team.indexOf(p)));
+    expect(partner).toBeTruthy();
+    const kid = makePerson({ village: partner.village, age: 3 * YEAR, parents: [partner.id] });
+    partner.children.push(kid.id);
+    expect(pickSettlers(state)).toContain(kid);
+  });
+
+  it('keeps pioneers away from the mainland mine', () => {
+    const state = readyWorld();
+    state.mine = true;
+    const miner = state.people.find(p => p.job !== 'child' && p.job !== 'elder');
+    miner.job = 'miner';
+    expect(canMine(state, miner)).toBe(true);
+    miner.village = ISLE;
+    state.frontier = { stage: 'pioneer', start: state.day, origin: {}, tries: 1 };
+    expect(canMine(state, miner)).toBe(false);
+    state.frontier = { stage: 'settled', day: state.day, tries: 1 };
+    expect(canMine(state, miner)).toBe(true);
   });
 
   it('keeps each family under one roof on the islet and back home', () => {

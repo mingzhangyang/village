@@ -3,6 +3,7 @@ import { JOBS, TRAITS, SURN, GIVEN, SKIN, HAIR } from './constants.js';
 import { YEAR, ageY } from './clock.js';
 import { random, rand, randi, pick, clamp } from './random.js';
 import { getState, markStateDirty } from './state.js';
+import { canMine } from './frontier.js';
 import { defaultSurnameForNewPerson, knownPersonSurname, migratedFamilyName, surnameFromName } from './names.js';
 
 export const ta=p=>p.gender==='女'?'她':'他';
@@ -136,17 +137,17 @@ export function remove(p,status,cause){
   }
   S.dead.push(p);if(S.dead.length>150)S.dead.shift();
 }
-export function nearestOf(list,h){let b=null,bd=1e9;for(let k=0;k<3;k++){const c=pick(list);const d=Math.hypot(c.i-h.i,c.j-h.j);if(d<bd){bd=d;b=c;}}return b;}
+export function nearestOf(list,h){if(!list.length)return null;let b=null,bd=1e9;for(let k=0;k<3;k++){const c=pick(list);const d=Math.hypot(c.i-h.i,c.j-h.j);if(d<bd){bd=d;b=c;}}return b;}
 export function assignTarget(p){
   const S = getState();
   const V=MAP.V[p.village],L=p.village===ISLE?MAP.isle:MAP,home=homeTile(p);let t;const r=random();
   if(!isWorker(p))t=r<0.5?home:r<0.8?V.center:pick(V.slots);
   else if(r<0.62){
     switch(p.job){
-      case 'farmer':t=nearestOf(L.fields,home);break;
-      case 'fisher':t=nearestOf(L.water,home);break;
-      case 'woodcutter':t=nearestOf(L.forest,home);break;
-      case 'miner':t=S.mine&&p.village!==ISLE?pick(MAP.mineAdj):V.center;break;
+      case 'farmer':t=nearestOf(L.fields,home)||V.center;break;
+      case 'fisher':t=nearestOf(L.water,home)||V.center;break;
+      case 'woodcutter':t=nearestOf(L.forest,home)||V.center;break;
+      case 'miner':t=S.mine&&canMine(S,p)?pick(MAP.mineAdj):V.center;break;
       case 'merchant':t=pick(L.plazas);break;
       default:t=random()<0.5?V.center:home;
     }

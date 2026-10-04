@@ -6,7 +6,7 @@ import { YEAR, seasonIndex, SEASONS } from '../simulation/clock.js';
 import { homeTile } from '../simulation/population.js';
 import { BUILDS, levelOf, levelName, nextUpgrade, upgradeBlock, UPGRADES } from '../simulation/buildings.js';
 import { TECHS, hasTech, techMult } from '../simulation/tech.js';
-import { FRONTIER, frontierStage, isSettled, islandAdults, islandMorale, workFactor } from '../simulation/frontier.js';
+import { FRONTIER, frontierStage, isSettled, isPioneering, islandAdults, islandMorale, workFactor, canMine } from '../simulation/frontier.js';
 
 const pct=v=>`${v>=1?'+':''}${Math.round((v-1)*100)}%`;
 const ageY=p=>Math.floor(p.age/YEAR);
@@ -81,7 +81,7 @@ export function describeField(state,t){
   if(state.drought>0)mods.push('干旱 ×0.3');
   if(state.canal&&!t.isle)mods.push('水渠 +35%');
   if(techMult(state,'farm')>1)mods.push(`技术 ${pct(techMult(state,'farm'))}`);
-  if(t.isle&&ps.length)mods.push(`南屿 ${pct(workFactor(state,ps[0]))}`);
+  if(t.isle)mods.push(...isleMod(state,'farmer'));
   return {
     kicker:t.isle?'南屿 · 田地':`${MAP.V[villageOf(t)].n} · 田地`,title:'农田',
     rows:[['农夫',`${ps.length} 位，平均技能 ${Math.round(avg(ps,p=>p.skill))}`],['今日全溪谷产粮',`${(state.foodProd||0).toFixed(1)} 担`],['产量系数',mods.join('，')]],
@@ -89,11 +89,22 @@ export function describeField(state,t){
   };
 }
 
+// 南屿居民的劳作系数：开荒期减半，定居后田地和渔场有加成。
+function isleMod(state,job){
+  const k=workFactor(state,{village:ISLE,job});
+  return k===1?[]:[`南屿${isPioneering(state)?'开荒':''} ${pct(k)}`];
+}
+function woodMods(state,t){
+  const mods=techMult(state,'wood')>1?[`技术 ${pct(techMult(state,'wood'))}`]:[];
+  if(t.isle)mods.push(...isleMod(state,'woodcutter'));
+  return mods;
+}
+
 export function describeForest(state,t){
   const ps=workersOf(state,'woodcutter',p=>t.isle?p.village===ISLE:p.village!==ISLE);
   return {
     kicker:t.isle?'南屿 · 林地':'林地',title:t.kind==='pine'?'松林':'阔叶林',
-    rows:[['樵夫',`${ps.length} 位，平均技能 ${Math.round(avg(ps,p=>p.skill))}`],['木材收入',techMult(state,'wood')>1?`技术 ${pct(techMult(state,'wood'))}`:'按樵夫手艺计']],
+    rows:[['樵夫',`${ps.length} 位，平均技能 ${Math.round(avg(ps,p=>p.skill))}`],['木材收入',woodMods(state,t).join('，')||'按樵夫手艺计']],
     text:'樵夫把木材卖到岛外，带回新的财富。可以在林地上盖建筑，树会被砍掉。'
   };
 }
@@ -104,7 +115,7 @@ export function describeWater(state,t){
   const mods=[`${SEASONS[se]}季 ×${fishK}`];
   if(state.drought>0)mods.push('干旱 ×0.8');
   if(techMult(state,'fish')>1)mods.push(`技术 ${pct(techMult(state,'fish'))}`);
-  if(t.isle&&isSettled(state))mods.push(`南屿渔场 +${Math.round(FRONTIER.fishBonus*100)}%`);
+  if(t.isle)mods.push(...isleMod(state,'fisher'));
   return {
     kicker:t.isle?'南屿 · 海岸':'溪流',title:t.isle?'海滩与渔场':'溪水',
     rows:[['渔民',`${ps.length} 位，平均技能 ${Math.round(avg(ps,p=>p.skill))}`],['渔获系数',mods.join('，')]],
@@ -114,7 +125,7 @@ export function describeWater(state,t){
 
 export function describeMine(state){
   if(!state.mine)return {kicker:'山脚',title:'裸露的岩层',text:'石缝里闪着一点金属的光泽。用“发现矿脉”可以在这里开矿。'};
-  const ps=workersOf(state,'miner');
+  const ps=workersOf(state,'miner',p=>canMine(state,p));
   return {
     kicker:'山脚',title:'矿洞',
     rows:[['矿工',`${ps.length} 位，平均技能 ${Math.round(avg(ps,p=>p.skill))}`],['状态',state.mineClosed>0?`停工整修，还剩 ${state.mineClosed} 日`:'正在开采'],['技术',techMult(state,'mine')>1?`铁制农具 ${pct(techMult(state,'mine'))}`:'—']],
