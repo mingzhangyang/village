@@ -13,7 +13,7 @@ function ensureHost(){
       <div class="kick" id="askKick">请确认</div>
       <h2 id="askTitle"></h2>
       <p id="askText"></p>
-      <input class="ask-input" id="askInput" type="text" maxlength="40" hidden>
+      <input class="ask-input" id="askInput" type="text" maxlength="40" aria-labelledby="askTitle" aria-describedby="askText" hidden>
       <div class="ask-actions">
         <button class="btn" id="askCancel">取消</button>
         <button class="btn primary" id="askOk">确定</button>

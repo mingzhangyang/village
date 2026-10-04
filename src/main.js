@@ -5,7 +5,7 @@ import { JOBS, POLICIES } from './simulation/constants.js';
 import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
 import { pickUi } from './ui/random.js';
 import { createUiDialog } from './ui/dialog.js';
-import { clampResidentHappiness, monotonicDay } from './simulation/invariants.js';
+import { clampResidentHappiness, monotonicDay, normalizeWorldName } from './simulation/invariants.js';
 import { describeTile, describeVillage } from './ui/inspect.js';
 import { moveKeyboardTile, peopleOnKeyboardTile } from './ui/map-keyboard.js';
 import { bindContext, hx, mix, shade, rgba, poly, rrect, hash, drawSea, buildTerrain, drawWaterFx, drawTree, drawHouse, drawMountain, drawMine, drawFountain, drawBuilding, drawPerson, drawSparkle, drawGlows, drawWeather, drawVignette } from './ui/scene.js';
@@ -283,7 +283,7 @@ function renderDilemma(){
 }
 $('dlgO').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||!S.pending)return;
-  if(b.id==='dlgLater'){dilemmaDeferred=true;dlgKey='';$('dlg').hidden=true;$('pendingBtn').hidden=false;const el=dlgReturnFocus;dlgReturnFocus=null;if(el&&typeof el.focus==='function')el.focus({preventScroll:true});dirty=true;return;}
+  if(b.id==='dlgLater'){dilemmaDeferred=true;dlgKey='';$('dlg').hidden=true;$('pendingBtn').hidden=false;dlgReturnFocus=null;$('pendingBtn').focus({preventScroll:true});dirty=true;return;}
   if(b.id==='dlgDone'){S.pending=null;dilemmaDeferred=false;dirty=true;updateUI();return;}
   const o=DILEMMAS[S.pending.k].opts(S.pending.d)[+b.dataset.i];if(!o||(o.ok&&!o.ok()))return;
   const r=o.go()||'就这么定了。';S.pending.res=r;
@@ -1025,15 +1025,17 @@ $('saveMdl').addEventListener('click',async e=>{
       if(Storage.listSlots().length>=Storage.MAX_SLOTS){await UiDialog.alert(`最多只能保留 ${Storage.MAX_SLOTS} 个自由世界，请先删除一个旧存档。`,{title:'存档槽已满'});return;}
       const info=Storage.getActiveInfo();
       if(info.kind==='challenge'&&!await UiDialog.confirm('新建自由世界会结束当前挑战，但挑战前的自由世界仍会保留。',{title:'新建自由世界吗？',confirmLabel:'新建'}))return;
-      const name=await UiDialog.prompt('给新世界起个名字。',{title:'新建世界',defaultValue:`溪谷 ${Storage.listSlots().length+1}`,confirmLabel:'创建'});if(name===null)return;
-      saveNow();installState(null,true,name);
-      Storage.createSlot(name,S,true);if(info.kind==='challenge')Storage.clearChallenge();
+      const fallback=`溪谷 ${Storage.listSlots().length+1}`;
+      const name=await UiDialog.prompt('给新世界起个名字。',{title:'新建世界',defaultValue:fallback,confirmLabel:'创建'});if(name===null)return;
+      const next=normalizeWorldName(name,fallback);
+      saveNow();installState(null,true,next);
+      Storage.createSlot(next,S,true);if(info.kind==='challenge')Storage.clearChallenge();
       saveNow();closeSaveManager();toast('新世界已创建');return;
     }
     if(act==='load'){await loadFreeSlot(id,false);return;}
     if(act==='rename'){
       const slot=Storage.listSlots().find(s=>s.id===id),name=await UiDialog.prompt('输入新的世界名称。',{title:'重命名世界',defaultValue:slot?slot.name:'',confirmLabel:'保存'});
-      if(name!==null){const next=String(name).trim().slice(0,40)||(slot&&slot.name)||'溪谷';const env=Storage.loadSlot(id,false);env.state.worldName=next;Storage.saveSlot(id,env.state);Storage.renameSlot(id,next);const info=Storage.getActiveInfo();if(info.kind==='slot'&&info.id===id){S.worldName=next;saveNow();}renderSaveManager();updateUI();}return;
+      if(name!==null){const next=normalizeWorldName(name,(slot&&slot.name)||'溪谷');const env=Storage.loadSlot(id,false);env.state.worldName=next;Storage.saveSlot(id,env.state);Storage.renameSlot(id,next);const info=Storage.getActiveInfo();if(info.kind==='slot'&&info.id===id){S.worldName=next;saveNow();}renderSaveManager();updateUI();}return;
     }
     if(act==='export'){const slot=Storage.listSlots().find(s=>s.id===id);downloadJson(Storage.exportSlot(id),slot?slot.name:'hejing-save');return;}
     if(act==='delete'){const slot=Storage.listSlots().find(s=>s.id===id);if(await UiDialog.confirm('此操作无法恢复。',{title:`确定删除“${slot?slot.name:'这个存档'}”吗？`,confirmLabel:'删除'})){Storage.deleteSlot(id);renderSaveManager();}return;}
@@ -1320,7 +1322,7 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 function installState(raw,fresh,worldName=null){
-  S=fresh?newState():normalizeState(raw);if(worldName)S.worldName=String(worldName).trim().slice(0,40)||S.worldName;setState(S);S.paused=false;observedDay=S.day;dilemmaDeferred=false;
+  S=fresh?newState():normalizeState(raw);if(worldName!==null)S.worldName=normalizeWorldName(worldName,S.worldName);setState(S);S.paused=false;observedDay=S.day;dilemmaDeferred=false;
   if(!S.people.length){
     seedPopulation();
     chron('第1年春。三十个人在溪谷群岛上开始了他们的生活。','info');
@@ -1342,7 +1344,7 @@ function init(fresh){
 async function firstVisit(){
   S.paused=true;updateUI();
   const name=await UiDialog.prompt('这里不是一张等待你征服的地图。三十个人会自己生活、结交、成家、衰老；你可以观察，也可以偶尔轻轻拨动他们的命运。\n\n先给这个世界起个名字。',{title:'欢迎来到溪谷',defaultValue:'溪谷 1',confirmLabel:'继续'});
-  if(name!==null){const next=String(name).trim().slice(0,40)||'溪谷 1';S.worldName=next;const info=Storage.getActiveInfo();if(info.id)Storage.renameSlot(info.id,next);saveNow();}
+  if(name!==null){const next=normalizeWorldName(name,'溪谷 1');S.worldName=next;const info=Storage.getActiveInfo();if(info.id)Storage.renameSlot(info.id,next);saveNow();}
   await UiDialog.alert('先让时间流动，看看粮食、财富和人与人的关系怎样变化。\n\n想干预时，可以用左侧的自然事件，或在右侧花“恩惠”帮助某个人；重要选择都会留下编年史和一生之书。\n\n没有唯一的胜利方式。观察这个小社会会走向哪里，就是自由模式的核心。',{title:'先观察，再轻轻干预',confirmLabel:'让时间开始流动'});
   S.paused=false;dirty=true;updateUI();saveNow();
 }

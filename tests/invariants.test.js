@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { monotonicDay } from '../src/simulation/invariants.js';
+import { monotonicDay, normalizeWorldName } from '../src/simulation/invariants.js';
 import { newState, normalizeState } from '../src/simulation/state.js';
 
 describe('simulation state invariants', () => {
@@ -30,5 +30,7 @@ describe('simulation state invariants', () => {
     state.worldName = '  山海溪谷  ';
 
     expect(normalizeState(state).worldName).toBe('山海溪谷');
+    expect(normalizeWorldName('   ','溪谷 2')).toBe('溪谷 2');
+    expect(normalizeWorldName('  新世界  ','溪谷 2')).toBe('新世界');
   });
 });

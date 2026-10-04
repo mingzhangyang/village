@@ -2,7 +2,7 @@ import { createWorldSeed, normalizeSeed, seedFromLegacyState } from './rng.js';
 import { knownPersonSurname, migratedFamilyName } from './names.js';
 import { normalizeTech } from './tech.js';
 import { normalizeFrontier } from './frontier.js';
-import { clampResidentHappiness } from './invariants.js';
+import { clampResidentHappiness, normalizeWorldName } from './invariants.js';
 
 let activeState = null;
 let onDirty = () => {};
@@ -318,7 +318,7 @@ export function normalizeState(raw){
   state.hist=Object.assign({},base.hist,o.hist||{});
   for(const k of ['pop','food','wealth','happy','coh'])if(!Array.isArray(state.hist[k]))state.hist[k]=[];
   for(const k of ['people','dead','built','watch','alerts','chron'])if(!Array.isArray(state[k]))state[k]=[];
-  state.worldName=typeof state.worldName==='string'&&state.worldName.trim()?state.worldName.trim().slice(0,40):base.worldName;
+  state.worldName=normalizeWorldName(state.worldName,base.worldName);
   clampResidentHappiness(state);
   normalizeTech(state);
   normalizeFrontier(state);
