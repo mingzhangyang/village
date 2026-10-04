@@ -235,7 +235,7 @@ const DILEMMAS={
       {t:'接回病弱的人',h:'开荒期唯一能离岛的机会：健康低于 50 的人回到故乡，岛上人手会变少',go(){
         const back=islanders(S).filter(p=>p.health>0&&p.health<50);
         if(!back.length)return '岛上没有病得太重的人，大家决定一起撑下去。';
-        for(const p of back){returnHome(S,p);log(p,'病倒后被接回了故乡');assignTarget(p);}
+        for(const p of back){returnHome(S,p);log(p,'病倒后被接回了故乡');}
         computeHouses();
         return `${back.map(p=>p.name).join('、')}被接回了故乡，南屿还剩 ${islandAdults(S).length} 位劳力。`;}}
     ]
@@ -616,7 +616,8 @@ function launchIsle(){
   if(!expeditionReady(S))return;
   if(!window.confirm(`确定远征南屿吗？公库会花掉 ${FRONTIER.treasury} 金，带走 ${FRONTIER.provisions} 担粮食。失败的话，这些都会白费。`))return;
   const team=launchExpedition(S);if(!team)return;
-  for(const p of team)assignTarget(p);
+  // launchExpedition owns village/home assignment and the exact go-home target.
+  // The UI must not randomize that destination again.
   applyBuilt();computeHouses();
   chron(`远征队扬帆出发！${team.length} 人带着 ${FRONTIER.provisions} 担粮食驶向南屿，开始为期 ${FRONTIER.pioneerDays} 日的开荒。`,'event');
   toast('远征队出发了');dirty=true;renderFrontierModal();updateUI();
@@ -1047,6 +1048,10 @@ function hitPerson(pt,tight){
   return best;
 }
 function villageAtPt(pt){const c=tileCoords(pt),nv=nearestVillage(c.fi,c.fj);return nv.d<=4.5?nv.k:null;}
+function chooseMoveSource(p){
+  if(!p)return false;
+  moveSrc=p.id;S.sel=p.id;updateFate();toast(`现在点一个村子，把${p.name}搬过去`);return true;
+}
 cv.addEventListener('pointerdown',e=>{
   const pt=localPt(e);
   if(tool==='move'){const p=hitPerson(pt);if(p){drag={kind:'person',p,x:e.clientX,y:e.clientY,moved:false,pointerId:e.pointerId};try{cv.setPointerCapture(e.pointerId);}catch{/* Pointer capture may be unavailable. */}return;}}
@@ -1066,7 +1071,7 @@ cv.addEventListener('pointerup',e=>{
   if(!d)return;
   if(d.kind==='person'){
     if(d.moved){const v=villageAtPt(pt);if(v)relocate(d.p,v);else toast('把人放到一个村子附近才能搬家。',true);moveSrc=null;}
-    else{moveSrc=d.p.id;S.sel=d.p.id;updateFate();toast(`现在点一个村子，把${d.p.name}搬过去`);}
+    else chooseMoveSource(d.p);
     return;
   }
   if(!d.moved)tap(pt);
@@ -1187,10 +1192,16 @@ function activateKeyboardTile(t){
   if(tool==='raze'){raze(t);return;}
   if(tool==='upgrade'){upgrade(t);return;}
   if(tool==='move'){
-    if(!moveSrc){toast('先按住或点一下要搬家的人。',true);return;}
+    const src=living(moveSrc);
+    if(!src){
+      moveSrc=null;
+      const resident=peopleOnKeyboardTile(S.people,t)[0];
+      if(!resident){toast('先把键盘光标移到要搬家的人所在位置。',true);return;}
+      chooseMoveSource(resident);return;
+    }
     const nv=nearestVillage(t.i,t.j);
     if(nv.d>4.5){toast('点一个村子附近的地方。',true);return;}
-    relocate(living(moveSrc),nv.k);moveSrc=null;return;
+    relocate(src,nv.k);moveSrc=null;return;
   }
   const resident=peopleOnKeyboardTile(S.people,t)[0];
   if(resident){selectPerson(resident);return;}
