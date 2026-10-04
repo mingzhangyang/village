@@ -189,6 +189,35 @@ describe('the pioneer phase', () => {
     together();
   });
 
+  it('keeps orphaned siblings in the same home after a failed expedition', () => {
+    const state = readyWorld();
+    const parent = state.people.find(isVolunteer);
+    parent.happiness = 100;
+    const kidA = makePerson({ village: parent.village, age: 4 * YEAR, parents: [parent.id] });
+    const kidB = makePerson({ village: parent.village, age: 6 * YEAR, parents: [parent.id] });
+    parent.children.push(kidA.id, kidB.id);
+
+    const team = launchExpedition(state);
+    expect(team).toEqual(expect.arrayContaining([parent, kidA, kidB]));
+    expect(kidA.home).toBe(kidB.home);
+
+    const origin = state.frontier.origin[parent.id];
+    const elsewhere = VKEYS.find(v => v !== origin);
+    for (const p of state.people.filter(q => q.village === origin)) {
+      p.village = elsewhere;
+      p.home = 0;
+    }
+
+    parent.health = 0;
+    const adults = islandAdults(state);
+    for (const p of adults.slice(0, Math.max(0, adults.length - FRONTIER.minAdults + 1))) p.health = 0;
+
+    expect(frontierTick(state).event).toBe('failed');
+    expect(kidA.village).toBe(origin);
+    expect(kidB.village).toBe(origin);
+    expect(kidA.home).toBe(kidB.home);
+  });
+
   it('does not count workers a storm has just killed', () => {
     const state = readyWorld();
     launchExpedition(state);

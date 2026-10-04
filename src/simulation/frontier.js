@@ -107,9 +107,15 @@ export function pickSettlers(state){
 // 换了住处的人径直走向新家（不消耗随机数）。
 function goHome(p){const t=homeTile(p);p.tx=t.i;p.ty=t.j;}
 
-// 已经住在 v 的伴侣或父母的宅基地；没有时返回 null。
+// 同一户近亲关系必须是对称的：伴侣、父母/子女，以及共享父母的兄弟姐妹都算一家人。
+// 这样即使父母在远征中去世，返乡的孩子仍会跟已经回家的同胞住在一起。
+function householdKin(a,b){
+  return a.partner===b.id||b.partner===a.id
+    ||a.parents.includes(b.id)||b.parents.includes(a.id)
+    ||a.parents.some(id=>b.parents.includes(id));
+}
 function familyHome(state,p,v){
-  const q=state.people.find(q=>q!==p&&q.village===v&&(q.id===p.partner||p.parents.includes(q.id)));
+  const q=state.people.find(q=>q!==p&&q.village===v&&householdKin(p,q));
   return q?q.home:null;
 }
 
