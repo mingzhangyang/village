@@ -35,6 +35,8 @@ export function happinessBreakdown({
   friendCount = 0,
   marketCount = 0,
   teahouseCount = 0,
+  marketUpgrade = 0,
+  teahouseUpgrade = 0,
 }) {
   const wealth = Math.max(0, person.wealth || 0);
   const fed = Number.isFinite(person.fed) ? person.fed : 1;
@@ -60,8 +62,8 @@ export function happinessBreakdown({
   const winterValue = add('winter', seasonIndex === 3 ? -3 : 0);
   const optimistValue = add('optimist', person.traits?.includes('乐天') ? 7 : 0);
   const publicValue = add('public', Math.min(6, state.publicPerCap * 8));
-  const marketValue = add('market', 2 * Math.min(2, marketCount));
-  const teahouseValue = add('teahouse', 2 * Math.min(2, teahouseCount));
+  const marketValue = add('market', 2 * (Math.min(2, marketCount) + marketUpgrade));
+  const teahouseValue = add('teahouse', 2 * (Math.min(2, teahouseCount) + teahouseUpgrade));
 
   let rawTarget = base + wealthValue;
   rawTarget += foodValue;
@@ -92,6 +94,7 @@ export function cohesionBreakdown({
   sadFraction = 0,
   gini,
   teahouseCount = 0,
+  teahouseUpgrade = 0,
 }) {
   const factors = [];
   const add = (key, value) => {
@@ -107,7 +110,7 @@ export function cohesionBreakdown({
   const sadValue = add('sad', -sadFraction * 25);
   const droughtValue = add('drought', state.drought > 0 ? (state.policy === 'need' || state.policy === 'equal' ? 4 : -8) : 0);
   const policyValue = add('policy', state.policy === 'market' ? -4 : state.policy === 'equal' ? 3 : 0);
-  const teahouseValue = add('teahouse', 3 * Math.min(2, teahouseCount));
+  const teahouseValue = add('teahouse', 3 * (Math.min(2, teahouseCount) + Math.min(1, teahouseUpgrade)));
 
   let rawTarget = base + friendsValue + inequalityValue + publicValue + festivalValue + sadValue;
   rawTarget += droughtValue;

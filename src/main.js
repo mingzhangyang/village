@@ -8,7 +8,7 @@ import { newState, normalizeState, setState, configureState } from './simulation
 import { configureEconomy, pushHist, tick } from './simulation/economy.js';
 import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './simulation/explainability.js';
 import { createChallenges } from './simulation/challenges.js';
-import { BUILDS } from './simulation/buildings.js';
+import { BUILDS, UPGRADES, buildingStats, statOf, totalBonus, granaryCapacity, investedCost, levelOf, levelName, nextUpgrade, upgradeBlock, upgradeBuilding } from './simulation/buildings.js';
 import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, startResearch, cancelResearch } from './simulation/tech.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
 
@@ -300,10 +300,11 @@ let bcount={};
 function recountB(){bcount={};for(const b of S.built){bcount[b.v]=bcount[b.v]||{};bcount[b.v][b.b]=(bcount[b.v][b.b]||0)+1;}}
 function BC(v,b){return (bcount[v]&&bcount[v][b])||0;}
 function BT(b){let n=0;for(const v of VKEYS)n+=BC(v,b);return n;}
-function foodCap(){return 450+250*BT('granary')+techBonus(S,'cap');}
+function foodCap(){return 450+granaryCapacity(S.built)+techBonus(S,'cap');}
+const builtAt=t=>t?S.built.find(b=>b.i===t.i&&b.j===t.j)||null:null;
 function applyBuilt(){
-  for(const t of MAP.all){t.type=t.orig;t.trees=t.otrees.slice();t.bld=null;t.bv=null;}
-  for(const b of S.built){const t=MAP.at(b.i,b.j);if(!t)continue;t.bld=b.b;t.bv=b.v;t.trees=[];if(t.type==='forest')t.type='grass';}
+  for(const t of MAP.all){t.type=t.orig;t.trees=t.otrees.slice();t.bld=null;t.bv=null;t.blv=0;}
+  for(const b of S.built){const t=MAP.at(b.i,b.j);if(!t)continue;t.bld=b.b;t.bv=b.v;t.blv=levelOf(b);t.trees=[];if(t.type==='forest')t.type='grass';}
   MAP.forest=MAP.all.filter(t=>t.type==='forest');
   recountB();colorKey='';
 }
@@ -330,10 +331,23 @@ function place(t,b){
 function raze(t){
   if(!t||!t.bld){toast('这里没有你建的建筑。',true);return;}
   const k=S.built.findIndex(b=>b.i===t.i&&b.j===t.j);if(k<0)return;
-  const b=S.built[k],B=BUILDS[b.b],back=Math.round(B.cost*0.4);
+  const b=S.built[k],name=levelName(b),back=Math.round(investedCost(b)*0.4);
   S.built.splice(k,1);S.treasury+=back;applyBuilt();
-  chron(`${VN(b.v)}的${B.n}被拆掉了，拆下的木料换回 ${back} 金。`,'choice');
-  toast(`拆掉了${VN(b.v)}的${B.n}，退回 ${back} 金`);dirty=true;updateUI();
+  chron(`${VN(b.v)}的${name}被拆掉了，拆下的木料换回 ${back} 金。`,'choice');
+  toast(`拆掉了${VN(b.v)}的${name}，退回 ${back} 金`);dirty=true;updateUI();
+}
+function upgrade(t){
+  const b=builtAt(t);if(!b){toast('这里没有你建的建筑。',true);return;}
+  const err=upgradeBlock(S,b);if(err){toast(err,true);return;}
+  const from=levelName(b),U=upgradeBuilding(S,b);applyBuilt();
+  chron(`${VN(b.v)}的${from}扩建成了${U.n}，花去公库 ${U.cost} 金。`,'choice');
+  toast(`${VN(b.v)}的${from}升级为${U.n}：${U.d}`);dirty=true;updateUI();
+}
+function buildingInfo(b){
+  const U=nextUpgrade(b),lv=levelOf(b);
+  const now=lv>1?`${UPGRADES[b.b][lv-1].d}。`:BUILDS[b.b].d;
+  const next=U?`可升级为${U.n}（${U.cost} 金${U.tech?`，需${TECHS[U.tech].n}`:''}）。`:'已是最高等级。';
+  return `${VN(b.v)}的${levelName(b)}（${lv} 级）：${now}${next}`;
 }
 function relocate(p,v){
   if(!p)return;
@@ -620,7 +634,7 @@ function drawMine(x,y,tw){
 }
 
 function drawBuilding(t,x,y,tw){
-  const s=tw*0.42;
+  const lv=t.blv||1,s=tw*0.42*(1+0.12*(lv-1));
   ctx.fillStyle='rgba(30,40,20,.15)';ctx.beginPath();ctx.ellipse(x+s*0.1,y+s*0.06,s*0.6,s*0.25,0,0,Math.PI*2);ctx.fill();
   if(t.bld==='granary'){
     const r=s*0.34,h=s*0.8;
@@ -643,6 +657,14 @@ function drawBuilding(t,x,y,tw){
     drawHouse(x,y,s*1.05,'#2f5f4f','#efe6d0');
     ctx.fillStyle='#d2463a';ctx.beginPath();ctx.ellipse(x,y-s*0.2,s*0.07,s*0.09,0,0,Math.PI*2);ctx.fill();
   }
+  if(lv>1){
+    const r=Math.max(1.6,tw*0.035);
+    for(let k=0;k<lv-1;k++){
+      const px=x-s*0.55+k*r*2.6,py=y+s*0.12;
+      ctx.fillStyle='#e2ad2f';ctx.strokeStyle='rgba(60,40,10,.55)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(px,py,r,0,Math.PI*2);ctx.fill();ctx.stroke();
+    }
+  }
 }
 function draw(){
   const {w,h,dpr,tw}=view;if(!w)return;
@@ -664,14 +686,14 @@ function draw(){
       ctx.moveTo(x-hw*0.35,y+hh*0.1);ctx.lineTo(x-hw*0.05,y-hh*0.05);ctx.moveTo(x+hw*0.05,y+hh*0.3);ctx.lineTo(x+hw*0.3,y+hh*0.15);ctx.stroke();
     }
   }
-  if(tool==='build'||tool==='raze'){
+  if(tool==='build'||tool==='raze'||tool==='upgrade'){
     const ht=hoverPt?tileAt(hoverPt):null;
     for(const t of MAP.all){
-      const ok=tool==='build'?!canPlace(t,buildSel):!!t.bld;
+      const ok=tool==='build'?!canPlace(t,buildSel):tool==='upgrade'?!!t.bld&&!upgradeBlock(S,builtAt(t)):!!t.bld;
       if(!ok&&t!==ht)continue;
       const [x,y]=iso(t.i,t.j);
       const hot=t===ht;
-      poly(hot?(ok?'rgba(255,255,255,.7)':'rgba(200,80,50,.45)'):(tool==='build'?'rgba(255,255,255,.3)':'rgba(200,80,50,.28)'),x,y-hh*0.86,x+hw*0.86,y,x,y+hh*0.86,x-hw*0.86,y);
+      poly(hot?(ok?'rgba(255,255,255,.7)':'rgba(200,80,50,.45)'):(tool==='raze'?'rgba(200,80,50,.28)':'rgba(255,255,255,.3)'),x,y-hh*0.86,x+hw*0.86,y,x,y+hh*0.86,x-hw*0.86,y);
       if(hot&&ok){ctx.strokeStyle=theme.accent;ctx.lineWidth=2;ctx.stroke();}
     }
   }
@@ -778,7 +800,8 @@ function updateStats(){
     averageFriends:avgF,
     sadFraction:sad/n,
     gini:S.gini,
-    teahouseCount:BT('teahouse')
+    teahouseCount:BT('teahouse'),
+    teahouseUpgrade:BT('teahouse')?totalBonus(buildingStats(S.built),'teahouse'):0
   });
   setT('cohWhyValue',String(Math.round(S.cohesion)));
   setT('cohWhyTrend',`驱动目标 ${Math.round(cohWhy.target)} · 每日约 ${signed(cohWhy.expectedChange)}`);
@@ -815,7 +838,9 @@ function updateFate(){
       seasonIndex:seasonIdx(),
       friendCount:fr,
       marketCount:BC(p.village,'market'),
-      teahouseCount:BC(p.village,'teahouse')
+      teahouseCount:BC(p.village,'teahouse'),
+      marketUpgrade:statOf(buildingStats(S.built),p.village,'market').bonus,
+      teahouseUpgrade:statOf(buildingStats(S.built),p.village,'teahouse').bonus
     });
     setT('fHappyTrend',`驱动目标 ${Math.round(happyWhy.rawTarget)} · 每日约 ${signed(happyWhy.expectedChange)}`);
     setH('fHappyWhy',whyRows(happyWhy.factors));
@@ -990,6 +1015,7 @@ cv.addEventListener('pointerleave',()=>{if(!drag)hoverPt=null;});
 function tap(pt){
   if(tool==='build'){place(tileAt(pt),buildSel);return;}
   if(tool==='raze'){raze(tileAt(pt));return;}
+  if(tool==='upgrade'){upgrade(tileAt(pt));return;}
   if(tool==='move'){
     if(!moveSrc){toast('先按住或点一下要搬家的人。',true);return;}
     const v=villageAtPt(pt);if(!v){toast('点一个村子附近的地方。',true);return;}
@@ -998,13 +1024,14 @@ function tap(pt){
   const p=hitPerson(pt);
   if(p){S.sel=p.id;$('tip').style.opacity='0';updateFate();return;}
   const t=tileAt(pt);
-  if(t&&t.bld){const B=BUILDS[t.bld];toast(`${VN(t.bv)}的${B.n}：${B.d}`);}
+  const b=builtAt(t);if(b)toast(buildingInfo(b));
 }
 const HINTS={
   look:'',
   build:()=>`点亮起来的空地，花公库 ${BUILDS[buildSel].cost} 金盖一座${BUILDS[buildSel].n}。${BUILDS[buildSel].d}`,
   move:'按住一个人拖到别的村子，或者先点人、再点村子。伴侣和年幼的孩子会一起搬，搬家会让人有点累。',
-  raze:'点一座你盖的建筑把它拆掉，退回四成造价。'
+  raze:'点一座你盖的建筑把它拆掉，退回建造和升级总花费的四成。',
+  upgrade:'点一座亮起来的建筑把它升一级。第 2 级只要花钱；第 3 级还要先掌握对应的技术：常平仓要腌藏晒干，井亭药庐要草药医术，商行要记账算学，书院茶社要雕版印书。'
 };
 function setTool(t){
   tool=t;moveSrc=null;dragGhost=null;

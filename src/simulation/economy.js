@@ -3,6 +3,7 @@ import { JOBS } from './constants.js';
 import { YEAR, seasonIndex, ageY } from './clock.js';
 import { random, rand, pick, clamp, has } from './random.js';
 import { getState } from './state.js';
+import { buildingStats, statOf, totalBonus, WELL_HEAL, WELL_PLAGUE, TEA_SOCIAL } from './buildings.js';
 import { TECHS, SHIP_INTERVAL, hasTech, techBonus, techMult, advanceResearch } from './tech.js';
 import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './explainability.js';
 import { isWorker, need, log, chron, notify, living, makePerson, setRel, changeRel, remove, assignTarget, foodDays, chooseJob, friendCount } from './population.js';
@@ -51,6 +52,9 @@ export function tick(){
   const farmK=[1.0,1.3,1.6,0.25][se]*(S.drought>0?0.3:1)*(S.canal?1.35:1)*techMult(S,'farm');
   const fishK=[1.0,1.1,1.0,0.6][se]*(S.drought>0?0.8:1)*techMult(S,'fish');
   const skillK=techMult(S,'skill');
+  const bs=buildingStats(S.built);
+  const wellLv=v=>buildingCount(v,'well')?Math.max(1,statOf(bs,v,'well').max):0;
+  const upgradeOf=(v,b)=>buildingCount(v,b)?statOf(bs,v,b).bonus:0;
   const inc=new Map(),prod=new Map();let food=0;
   for(const p of P){
     if(!isWorker(p)){if(p.job==='child')p.skill=clamp(p.skill+0.05*(S.school?3:1)*skillK,0,100);continue;}
@@ -62,7 +66,7 @@ export function tick(){
       case 'woodcutter':x=0.95*k*techMult(S,'wood');break;
       case 'miner':x=S.mineClosed>0?0:2.3*k*techMult(S,'mine');break;
       case 'craftsman':x=0.35*k*techMult(S,'craft');break;
-      case 'merchant':x=0.3*k*techMult(S,'merchant')*(S.caravan>0?2.5:1)*(1+0.3*Math.min(2,buildingCount(p.village,'market')));break;
+      case 'merchant':x=0.3*k*techMult(S,'merchant')*(S.caravan>0?2.5:1)*(1+0.3*(Math.min(2,buildingCount(p.village,'market'))+upgradeOf(p.village,'market')));break;
     }
     inc.set(p,x);
     p.skill=clamp(p.skill+0.12*(has(p,'好学')?1.6:1)*skillK*(1-p.skill/100),0,100);
@@ -130,9 +134,9 @@ export function tick(){
     else{
       if(p.hungerDays>=3)log(p,'终于又吃上了饱饭');p.hungerDays=0;
       const cap=p.age>60*YEAR?100-(ageY(p)-60)*2.5:100;
-      p.health=Math.min(Math.max(cap,0),p.health+(has(p,'体弱')?0.5:1.3)+(buildingCount(p.village,'well')?0.6:0)+techBonus(S,'heal'));
+      p.health=Math.min(Math.max(cap,0),p.health+(has(p,'体弱')?0.5:1.3)+WELL_HEAL[wellLv(p.village)]+techBonus(S,'heal'));
     }
-    if(S.plague>0&&p.plagueTag!==S.plagueId&&random()<0.035*(buildingCount(p.village,'well')?0.5:1)*techMult(S,'plague')){
+    if(S.plague>0&&p.plagueTag!==S.plagueId&&random()<0.035*WELL_PLAGUE[wellLv(p.village)]*techMult(S,'plague')){
       p.plagueTag=S.plagueId;
       p.health-=rand(15,38)*(has(p,'体弱')?1.5:1)*((p.job==='child'||p.job==='elder')?1.3:1);
       log(p,'染上了疫病');notify(p,'染上了疫病');
@@ -152,7 +156,9 @@ export function tick(){
       seasonIndex:se,
       friendCount:friendCount(p),
       marketCount:buildingCount(p.village,'market'),
-      teahouseCount:buildingCount(p.village,'teahouse')
+      teahouseCount:buildingCount(p.village,'teahouse'),
+      marketUpgrade:upgradeOf(p.village,'market'),
+      teahouseUpgrade:upgradeOf(p.village,'teahouse')
     });
     p.happiness=clamp(p.happiness+(why.rawTarget-p.happiness)*0.07+rand(-0.8,0.8),0,100);
     if(p.happiness<MIGRATION_RULES.sadHappinessThreshold)p.sadDays++;else p.sadDays=Math.max(0,p.sadDays-1);
@@ -162,7 +168,7 @@ export function tick(){
   // 来往
   const byV={};for(const v of VKEYS)byV[v]=[];for(const p of P)byV[p.village].push(p);
   for(const p of P){
-    let k=(has(p,'好客')?1.6:has(p,'内向')?0.5:1)*(S.festival>0?2:1)*(buildingCount(p.village,'teahouse')?1.4:1),times=0;
+    let k=(has(p,'好客')?1.6:has(p,'内向')?0.5:1)*(S.festival>0?2:1)*(buildingCount(p.village,'teahouse')?TEA_SOCIAL[Math.max(1,statOf(bs,p.village,'teahouse').max)]:1),times=0;
     while(k>0){if(random()<Math.min(1,k)*0.6)times++;k-=1;}
     for(let t=0;t<times;t++){
       const q=pick(random()<0.75?byV[p.village]:P);if(!q||q===p)continue;
@@ -240,7 +246,8 @@ export function tick(){
     averageFriends:avgF,
     sadFraction:sadFrac,
     gini:gn,
-    teahouseCount:totalBuildingCount('teahouse')
+    teahouseCount:totalBuildingCount('teahouse'),
+    teahouseUpgrade:totalBuildingCount('teahouse')?totalBonus(bs,'teahouse'):0
   });
   S.cohesion=clamp(S.cohesion+(cohesionWhy.target-S.cohesion)*0.04,0,100);
 
