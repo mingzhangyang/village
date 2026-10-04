@@ -1,6 +1,6 @@
 // 开拓新土地：远征南屿。门槛高、开荒期艰难，失败会损失全部投入。
 import { MAP, ISLE, VKEYS, ALL_VKEYS } from '../world/map.js';
-import { YEAR } from './clock.js';
+import { YEAR, ageY } from './clock.js';
 import { random, rand, clamp } from './random.js';
 import { hasTech, TECHS } from './tech.js';
 import { freeSlot, homeTile, log } from './population.js';
@@ -48,8 +48,9 @@ export function islandMorale(state){
 }
 
 export function isVolunteer(p){
-  const [lo,hi]=FRONTIER.volunteerAge;
-  return worker(p)&&p.village!==ISLE&&p.age>=lo*YEAR&&p.age<=hi*YEAR
+  const [lo,hi]=FRONTIER.volunteerAge,age=ageY(p);
+  // 资格与界面显示使用同一“周岁”语义：45 岁的整年都应算在 18–45 岁范围内。
+  return worker(p)&&p.village!==ISLE&&age>=lo&&age<=hi
     &&p.health>=FRONTIER.volunteerHealth&&p.happiness>=FRONTIER.volunteerHappiness;
 }
 export function volunteers(state){

@@ -5,6 +5,7 @@ import { JOBS, POLICIES } from './simulation/constants.js';
 import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
 import { pickUi } from './ui/random.js';
 import { describeTile, describeVillage } from './ui/inspect.js';
+import { moveKeyboardTile } from './ui/map-keyboard.js';
 import { bindContext, hx, mix, shade, rgba, poly, rrect, hash, drawSea, buildTerrain, drawWaterFx, drawTree, drawHouse, drawMountain, drawMine, drawFountain, drawBuilding, drawPerson, drawSparkle, drawGlows, drawWeather, drawVignette } from './ui/scene.js';
 import { newState, normalizeState, setState, configureState } from './simulation/state.js';
 import { configureEconomy, pushHist, tick } from './simulation/economy.js';
@@ -649,6 +650,7 @@ $('fWatch').addEventListener('click',()=>{
 
 /* ---------------- 地图绘制 ---------------- */
 const cv=$('map'),ctx=cv.getContext('2d');bindContext(ctx);
+const MAP_ARIA_BASE=cv.getAttribute('aria-label')||'溪谷群岛地图';
 const view={w:0,h:0,dpr:1,zoom:1,panX:0,panY:0,tw:30,ox:0,oy:0};
 let tool='look',buildSel='granary',hoverPt=null,moveSrc=null,dragGhost=null,kbTile=null;
 let theme={label:'#fff',ink:'#263022',line:'#dfe2d2',accent:'#4f7136',accentInk:'#fff',dark:false};
@@ -1067,18 +1069,33 @@ function cancelDrag(){drag=null;dragGhost=null;}
 cv.addEventListener('pointercancel',cancelDrag);
 cv.addEventListener('lostpointercapture',cancelDrag);
 cv.addEventListener('pointerleave',()=>{if(!drag)hoverPt=null;});
-// 键盘操作：方向键在地块之间移动光标，回车或空格等同于点一下光标处。
-const KB_STEP={ArrowUp:[-1,-1],ArrowDown:[1,1],ArrowLeft:[-1,1],ArrowRight:[1,-1]};
+// 键盘操作：每次沿真实相邻地块的一条地图轴移动，确保两种棋盘奇偶格都可达。
 const kbVisible=t=>t&&!(t.isle&&!isleVisible(S));
-cv.addEventListener('focus',()=>{if(!kbVisible(kbTile))kbTile=MAP.V.grain.center;});
+function keyboardTileStatus(t){
+  if(!t)return '';
+  const c=describeTile(S,t,{houses,built:builtAt(t)});
+  const where=[c&&c.kicker,c&&c.title].filter(Boolean).join('，')||'地块';
+  const people=S.people.filter(p=>Math.round(p.x)===t.i&&Math.round(p.y)===t.j);
+  const occupants=people.length?'，附近居民 '+people.slice(0,3).map(p=>p.name).join('、')+(people.length>3?'等 '+people.length+' 人':''):'';
+  return '键盘光标：'+where+'，第 '+(t.i+1)+' 行第 '+(t.j+1)+' 列'+occupants;
+}
+function syncKeyboardTile(){
+  if(!kbTile)return;
+  const [x,y]=iso(kbTile.i,kbTile.j);hoverPt={x,y};
+  const status=keyboardTileStatus(kbTile);
+  cv.setAttribute('aria-label',MAP_ARIA_BASE+'。'+status);
+  $('mapKbStatus').textContent=status;
+}
+cv.addEventListener('focus',()=>{
+  if(!kbVisible(kbTile))kbTile=MAP.V.grain.center;
+  syncKeyboardTile();
+});
 cv.addEventListener('keydown',e=>{
   if(!kbTile)kbTile=MAP.V.grain.center;
-  const st=KB_STEP[e.key];
-  if(st){
-    e.preventDefault();
-    // 跳过海面，最多往前找几格，找不到就原地不动。
-    for(let k=1;k<=6;k++){const t=MAP.at(kbTile.i+st[0]*k,kbTile.j+st[1]*k);if(kbVisible(t)){kbTile=t;break;}}
-    const [x,y]=iso(kbTile.i,kbTile.j);hoverPt={x,y};return;
+  if(e.key.startsWith('Arrow')){
+    const next=moveKeyboardTile(MAP,kbTile,e.key,kbVisible);
+    if(next!==kbTile){e.preventDefault();kbTile=next;syncKeyboardTile();}
+    return;
   }
   if(e.key==='Enter'||e.key===' '){
     e.preventDefault();

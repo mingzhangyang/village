@@ -76,6 +76,18 @@ describe('expedition requirements', () => {
       if (p.partner) expect(team.map(q => q.id)).toContain(p.partner);
     }
   });
+
+  it('accepts the entire displayed 45th year and rejects age 46', () => {
+    const state = readyWorld();
+    const p = state.people.find(q => q.job !== 'child' && q.job !== 'elder' && q.village !== ISLE);
+    p.health = 100;p.happiness = 70;
+    p.age = 45 * YEAR;
+    expect(isVolunteer(p)).toBe(true);
+    p.age = 46 * YEAR - 1;
+    expect(isVolunteer(p)).toBe(true);
+    p.age = 46 * YEAR;
+    expect(isVolunteer(p)).toBe(false);
+  });
 });
 
 describe('the pioneer phase', () => {
