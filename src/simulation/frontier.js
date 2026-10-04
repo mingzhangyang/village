@@ -161,7 +161,7 @@ export function frontierTick(state){
   const morale=islandMorale(state);
   if(morale<FRONTIER.minMorale)return failExpedition(state,`开拓者人心思归（平均幸福 ${Math.round(morale)}，至少要 ${FRONTIER.minMorale}）`);
   state.frontier={stage:'settled',day:state.day,tries:f.tries};
-  for(const p of islanders(state)){p.happiness=clamp(p.happiness+15,0,100);log(p,'和大家一起把南屿变成了新的家园');}
+  for(const p of islanders(state).filter(p=>p.health>0)){p.happiness=clamp(p.happiness+15,0,100);log(p,'和大家一起把南屿变成了新的家园');}
   return {event:'settled',text:`历经 ${FRONTIER.pioneerDays} 日开荒，南屿正式成为溪谷的第四个聚落！`};
 }
 

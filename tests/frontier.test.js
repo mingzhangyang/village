@@ -268,6 +268,19 @@ describe('the pioneer phase', () => {
     expect(hardshipFor(state, team[0])).toBe(0);
   });
 
+  it('does not reward settlers who are already dead when the pioneer term settles', () => {
+    const state = readyWorld();
+    launchExpedition(state);
+    const casualty = islandAdults(state)[0];
+    casualty.health = 0;
+    casualty.happiness = 0;
+    const historyStart = casualty.hist.length;
+    state.day += FRONTIER.pioneerDays;
+    expect(frontierTick(state).event).toBe('settled');
+    expect(casualty.happiness).toBe(0);
+    expect(casualty.hist.slice(historyStart).some(h => h.t.includes('把南屿变成了新的家园'))).toBe(false);
+  });
+
   it('does not consume randomness outside the pioneer phase', () => {
     const state = readyWorld();
     const rng = state.rngState;

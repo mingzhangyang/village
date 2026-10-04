@@ -444,6 +444,12 @@ function keepChallengeWorld(){
   }
 }
 let mdlMode='',mdlReturnFocus=null;
+function replaceModalOptions(html){
+  const opts=$('mdlO'),active=document.activeElement;
+  const restoreFocus=!$('mdl').hidden&&active&&opts.contains(active);
+  opts.innerHTML=html;
+  if(restoreFocus)$('mdl').querySelector('.dlg').focus({preventScroll:true});
+}
 function openModal(mode){
   if($('mdl').hidden)mdlReturnFocus=document.activeElement;
   mdlMode=mode;const w=wins();
@@ -544,7 +550,7 @@ function renderTechModal(){
   }
   html+='<p class="mnote">想培养行家：年轻人成年后多半做所在村子的本行（禾谷出农夫，松林出樵夫，溪湾出渔民和商人），可以先把孩子搬过去；也可以迎来移民，或用“传授手艺”直接提升一个人的技能。改行会让技能减半。</p>';
   html+='<button class="opt free" data-act="close"><b>关闭</b></button>';
-  $('mdlO').innerHTML=html;
+  replaceModalOptions(html);
 }
 function pickTech(id){
   if(!startResearch(S,id)){toast(researchBlock(S,id)||'现在不能研究',true);return;}
@@ -604,7 +610,7 @@ function renderFrontierModal(){
     html=checkList(checks)+`<button class="opt" data-act="launch"${ready?'':' disabled'}><b>扬帆出发</b><span>${ready?`${team.filter(isVolunteer).length} 位志愿者带着家人共 ${team.length} 人出发：${team.map(p=>p.name).join('、')}`:'所有条件都满足后才能出发。'}</span></button>`;
   }
   html+='<button class="opt free" data-act="close"><b>关闭</b></button>';
-  $('mdlO').innerHTML=html;
+  replaceModalOptions(html);
 }
 function launchIsle(){
   if(!expeditionReady(S))return;
