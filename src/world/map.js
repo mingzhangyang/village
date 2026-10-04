@@ -8,6 +8,33 @@ export const VDEF={
   bay:{n:'溪湾聚落',ci:15,cj:12,roof:'#3f7a86'}
 };
 export const VKEYS=['pine','grain','bay'];
+// 东南海上的无人小岛，要开拓之后才成为第四个聚落。
+export const ISLE='isle';
+export const ALL_VKEYS=[...VKEYS,ISLE];
+const ISLE_DEF={n:'南屿',roof:'#8a5f9e'};
+// 小岛与主岛隔着一道海，单独生成，不影响主岛的随机布局。
+const ISLE_TILES=[
+  [17,16,'forest'],[18,16,'forest'],
+  [16,17,'slot'],[17,17,'slot'],[18,17,'slot'],[19,17,'coast'],
+  [15,18,'field'],[16,18,'slot'],[17,18,'plaza'],[18,18,'slot'],[19,18,'coast'],
+  [16,19,'field'],[17,19,'slot'],[18,19,'coast']
+];
+function buildIsle(g,all){
+  const r=mulberry32(20261004),tiles=[];
+  for(const [i,j,kind] of ISLE_TILES){
+    const t={i,j,type:kind==='forest'||kind==='field'||kind==='plaza'?kind:'grass',v:r(),trees:[],slot:kind==='slot',isle:true,coast:kind==='coast'};
+    if(kind==='forest'){t.kind='pine';for(let k=0;k<3;k++)t.trees.push({dx:(r()-0.5)*0.55,dy:(r()-0.5)*0.55,s:0.75+r()*0.45,kind:'pine'});}
+    else if(kind==='coast'&&r()<0.5)t.trees.push({dx:(r()-0.5)*0.4,dy:(r()-0.5)*0.4,s:0.7+r()*0.3,kind:'round'});
+    t.trees.sort((a,b)=>(a.dx+a.dy)-(b.dx+b.dy));
+    g[i][j]=t;all.push(t);tiles.push(t);
+  }
+  const center=tiles.find(t=>t.type==='plaza');
+  const slots=tiles.filter(t=>t.slot).sort((a,b)=>Math.hypot(a.i-center.i,a.j-center.j)-Math.hypot(b.i-center.i,b.j-center.j));
+  return {
+    village:{key:ISLE,n:ISLE_DEF.n,roof:ISLE_DEF.roof,center,slots},
+    lists:{tiles,fields:tiles.filter(t=>t.type==='field'),forest:tiles.filter(t=>t.type==='forest'),water:tiles.filter(t=>t.coast),plazas:[center]}
+  };
+}
 export const MAP=(function(){
   const r=mulberry32(20261003);
   const g=[];const c=(N-1)/2;
@@ -49,8 +76,10 @@ export const MAP=(function(){
   all.forEach(t=>{if((t.type==='grass'||t.type==='forest')&&!t.slot){const dd=dist(t,12,3.8);if(dd<md){md=dd;mine=t;}}});
   mine.type='grass';mine.trees=[];mine.mine=true;
   const mineAdj=all.filter(t=>dist(t,mine.i,mine.j)<1.6&&t.type!=='water'&&t.type!=='mountain');
-  all.forEach(t=>{t.orig=t.type;t.otrees=t.trees.slice();});
   const edge=all.filter(t=>!at(t.i+1,t.j)||!at(t.i,t.j+1)||!at(t.i-1,t.j)||!at(t.i,t.j-1));
+  const isle=buildIsle(g,all);V[ISLE]=isle.village;
+  all.forEach(t=>{t.orig=t.type;t.otrees=t.trees.slice();});
   all.sort((a,b)=>(a.i+a.j)-(b.i+b.j)||a.i-b.i);
-  return {g,at,all,water,forest:all.filter(t=>t.type==='forest'),fields:all.filter(t=>t.type==='field'),V,mine,mineAdj,edge,plazas:VKEYS.map(k=>V[k].center)};
+  const main=all.filter(t=>!t.isle);
+  return {g,at,all,water,forest:main.filter(t=>t.type==='forest'),fields:main.filter(t=>t.type==='field'),V,mine,mineAdj,edge,plazas:VKEYS.map(k=>V[k].center),isle:isle.lists};
 })();

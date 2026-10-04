@@ -60,6 +60,16 @@
       <p class="hint" id="policyDesc"></p>
       <label class="check"><input type="checkbox" id="dilOn" checked> 让溪谷时常来找我做决定</label>
       <label class="check"><input type="checkbox" id="alOn" checked> 我关注的人遇到大事时暂停</label>
+      <div class="divider"></div>
+      <div class="ptitle">发展 <small id="techEra"></small></div>
+      <p class="pdesc" id="techDesc"></p>
+      <div class="gbar tech-bar" id="techBarWrap" hidden><i id="techBar"></i></div>
+      <button class="btn tech-btn" id="techBtn">打开发展图谱</button>
+      <div class="divider"></div>
+      <div class="ptitle">开拓 <small id="frontierTag"></small></div>
+      <p class="pdesc" id="frontierDesc"></p>
+      <div class="gbar tech-bar" id="frontierBarWrap" hidden><i id="frontierBar"></i></div>
+      <button class="btn tech-btn" id="frontierBtn">远征南屿</button>
     </aside>
 
     <section class="card panel mapcard">
@@ -68,7 +78,7 @@
         <span class="badge" id="weather"></span>
       </div>
       <div class="toolbar">
-        <div class="seg" id="tools"><button data-t="look" class="on">观察</button><button data-t="build">建造</button><button data-t="move">搬家</button><button data-t="raze">拆除</button></div>
+        <div class="seg" id="tools"><button data-t="look" class="on">观察</button><button data-t="build">建造</button><button data-t="move">搬家</button><button data-t="upgrade">升级</button><button data-t="raze">拆除</button></div>
         <span class="purse" id="purse"></span>
       </div>
       <div class="palette" id="palette" hidden>
@@ -79,10 +89,17 @@
       </div>
       <p class="toolhint" id="toolhint" hidden></p>
       <div class="mapwrap" id="mapwrap">
-        <canvas id="map" aria-label="溪谷群岛地图，点击居民查看他们的一生"></canvas>
+        <canvas id="map" tabindex="0" aria-describedby="mapKbStatus" aria-label="溪谷群岛地图。点击居民、房屋、建筑或地块查看详情；键盘：方向键移动光标，回车或空格选中光标处，Esc 关闭信息卡"></canvas>
+        <span id="mapKbStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true">键盘聚焦地图后会播报当前光标所在的地块。</span>
         <div class="zoom"><button id="zin" aria-label="放大">+</button><button id="zout" aria-label="缩小">−</button><button id="zfit" aria-label="复位">⤢</button></div>
         <div class="toast" id="toast" role="status" aria-live="polite"></div>
-        <div class="tip" id="tip">点一下小人，追踪 TA 的一生</div>
+        <div class="tip" id="tip">点一下小人、房子或田地，看看它的故事</div>
+        <div class="info card" id="info" hidden tabindex="-1" role="dialog" aria-labelledby="infoT">
+          <button class="info-x" id="infoX" aria-label="关闭">×</button>
+          <div class="kick" id="infoK"></div>
+          <div class="info-t" id="infoT"></div>
+          <div id="infoB"></div>
+        </div>
       </div>
       <div class="legend" id="legend"></div>
       <div class="chron">
@@ -134,7 +151,10 @@
     <p>每个居民每天都会劳作、吃饭、花钱，也会和邻居来往。农夫种粮、渔民打鱼，粮食进入公共粮仓；大家花钱买粮，钱再流回种粮打鱼的人手里。樵夫和矿工把木材、矿石卖到岛外，带回新的财富；工匠和商人靠别人的日常消费过活。</p>
     <p>税收进入公库。公库每天拿出一小部分做公共事务（修路、照看老人），这会提升凝聚力；剩下的按你选的“公共粮食分配”方式，在粮食短缺时决定谁先吃上饭，并定期接济或返还给居民。</p>
     <p>每隔一段时间，溪谷会来找你做一个两难的决定：要不要和商队交易、收不收留逃荒的人、田界之争判给谁。没有标准答案，每个选择都会写进编年史和当事人的一生。你也可以在命运追踪里花“恩惠”直接帮某一个人，看这一点改变会把他的人生带向哪里。</p>
-    <p>地图也可以直接动手改。用“建造”花公库的钱盖粮仓、水井、集市、茶馆，每种建筑只惠及它所在的村子（粮仓除外，它让整个溪谷多存粮）。用“搬家”把一个人拖到别的村子，伴侣和年幼的孩子会一起搬过去。</p>
+    <p>在“观察”模式下，点地图上的东西会弹出一张信息卡：点房子能看到住着哪一家（点名字就能追踪那个人），点广场或村名能看到这个聚落的人口、职业、民心和建筑，点你盖的建筑能看到它的等级、效果并直接升级，点田地、树林、溪水、矿洞会说明谁在那里干活、产量受季节和技术怎样影响。点小人则会在右边追踪 TA 的一生。</p>
+    <p>地图也可以直接动手改。用“建造”花公库的钱盖粮仓、水井、集市、茶馆，每种建筑只惠及它所在的村子（粮仓除外，它让整个溪谷多存粮）。用“升级”把建筑扩建一级，效果更强，最高三级，第三级要先研究对应的技术。用“搬家”把一个人拖到别的村子，伴侣和年幼的孩子会一起搬过去。</p>
+    <p>“发展”让溪谷一代代变得更能干。从公库拿钱立项研究一门技术，比如轮作、渔网、草药、铁器、水车、印书、航路，光有钱还不够：每项技术都要有够格的行家，比如几位技能够高的农夫、渔民或工匠，有的还要水井、集市、学堂或足够的民心。立项后这些条件也要一直保持，行家离开、改行或闹饥荒，研究就会停下。够格的行家越多、办了学堂，进度越快；旱灾和疫病会拖慢进度。掌握的技术会永久提高产出、减少损耗、让人更健康，或者让溪谷容得下更多人口。有些技术要先发现矿脉或修好水渠才能研究。</p>
+    <p>溪谷之外还有新土地。掌握远洋航路后，地图东南会出现一座无人小岛“南屿”。要开拓它，溪谷得同时做到人口、公库、存粮、凝聚力都达标，还要有足够多身强体健、心气正高的志愿者。出发后是六十日的开荒期：开拓者干活只有平常一半的收成，想家、风暴和病痛会消磨人心。岛上能干活的人少于五个，或者期满时大家的平均幸福太低，远征就会失败，投入的钱粮全部白费，还要等两年才能再试。成功之后，南屿会成为第四个聚落，那里的田地和渔场更丰饶，溪谷也容得下更多人口。</p>
     <p>点“挑战”可以选一个有明确目标的剧本，比如熬过三年大旱、让贫富差距缩小。你正在追踪的人，以及你点了“关注”或帮过的人，遇到结婚、生子、挨饿、重病、想离开这样的大事时，世界会暂停，等你决定要不要出手。</p>
     <p>一个人的幸福取决于温饱、财富、朋友、伴侣和健康，也会被税负和贫富差距影响。关系好的人会结为伴侣、生儿育女；长期愁苦的人会离开溪谷。进度会自动保存在这个浏览器里。</p>
   </details>

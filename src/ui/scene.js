@@ -16,6 +16,9 @@ export function poly(fill,...pts){ctx.beginPath();ctx.moveTo(pts[0],pts[1]);for(
 export function rrect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 // Deterministic 0..1 noise so decoration stays put between frames and reloads.
 export function hash(a,b){const s=Math.sin(a*127.1+b*311.7)*43758.5453;return s-Math.floor(s);}
+// 未发现的南屿不画；发现后它也有自己的海岸线。
+const isleEdge=MAP.isle.tiles.filter(t=>!MAP.at(t.i+1,t.j)||!MAP.at(t.i,t.j+1)||!MAP.at(t.i-1,t.j)||!MAP.at(t.i,t.j-1));
+const landTiles=show=>show?MAP.all:MAP.all.filter(t=>!t.isle);
 const lerp=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];
 function ell(fill,x,y,rx,ry){ctx.fillStyle=fill;ctx.beginPath();ctx.ellipse(x,y,Math.max(0.1,rx),Math.max(0.1,ry),0,0,Math.PI*2);ctx.fill();}
 function dot(fill,x,y,r){ctx.fillStyle=fill;ctx.beginPath();ctx.arc(x,y,Math.max(0.1,r),0,Math.PI*2);ctx.fill();}
@@ -42,16 +45,16 @@ export function drawSea(w,h,o){
 
 const SPRING_FLOWERS=['#f7f3e6','#f2c94c','#ec9fb6','#c7a6e6'];
 export function buildTerrain(o){
-  const {tw,iso,tileCol,se,canal,dry,dark}=o,hw=tw/2,hh=tw/4,D=tw*0.32,at=MAP.at;
+  const {tw,iso,tileCol,se,canal,dry,dark,showIsle}=o,hw=tw/2,hh=tw/4,D=tw*0.32,at=MAP.at,land=landTiles(showIsle);
   // 岛屿在海中的浅滩与投影
-  const footprint=(sx,sy,dx,dy)=>{ctx.beginPath();for(const t of MAP.all){const [x,y]=iso(t.i,t.j),X=x+dx,Y=y+dy;ctx.moveTo(X,Y-hh*sy);ctx.lineTo(X+hw*sx,Y);ctx.lineTo(X,Y+hh*sy);ctx.lineTo(X-hw*sx,Y);ctx.closePath();}};
+  const footprint=(sx,sy,dx,dy)=>{ctx.beginPath();for(const t of land){const [x,y]=iso(t.i,t.j),X=x+dx,Y=y+dy;ctx.moveTo(X,Y-hh*sy);ctx.lineTo(X+hw*sx,Y);ctx.lineTo(X,Y+hh*sy);ctx.lineTo(X-hw*sx,Y);ctx.closePath();}};
   ctx.save();
   ctx.filter=`blur(${Math.max(2,tw*0.35).toFixed(1)}px)`;
   footprint(1.9,1.9,0,D);ctx.fillStyle=dark?'rgba(60,100,105,.35)':'rgba(236,246,236,.75)';ctx.fill();
   ctx.filter=`blur(${Math.max(2,tw*0.2).toFixed(1)}px)`;
   footprint(1.05,1.05,tw*0.12,D+tw*0.16);ctx.fillStyle=dark?'rgba(0,0,0,.35)':'rgba(30,70,80,.22)';ctx.fill();
   ctx.restore();
-  for(const t of MAP.all){
+  for(const t of land){
     const [x,y]=iso(t.i,t.j),col=tileCol.get(t),wat=t.type==='water',r=(a)=>hash(t.i*31+t.j,a);
     // 断崖：草皮边、土层渐变、岩层纹
     const front=[];if(!at(t.i,t.j+1))front.push(0);if(!at(t.i+1,t.j))front.push(1);
@@ -121,7 +124,7 @@ export function buildTerrain(o){
 
 /* ---------------- 动态水面：水纹、瀑布、岸边浪 ---------------- */
 export function drawWaterFx(o){
-  const {tw,iso,T,dark}=o,hw=tw/2,hh=tw/4,D=tw*0.32,at=MAP.at;
+  const {tw,iso,T,dark,showIsle}=o,hw=tw/2,hh=tw/4,D=tw*0.32,at=MAP.at;
   ctx.lineCap='round';
   for(const t of MAP.water){
     const [x,y]=iso(t.i,t.j),sd=hash(t.i,t.j);
@@ -144,7 +147,7 @@ export function drawWaterFx(o){
   }
   // 岛屿底部的浪线
   const fa=dark?0.18:0.5;
-  for(const t of MAP.edge){
+  for(const t of showIsle?[...MAP.edge,...isleEdge]:MAP.edge){
     const [x,y]=iso(t.i,t.j),w=0.5+0.5*Math.sin(T*1.6+t.i*0.9+t.j*0.7),off=tw*(0.02+w*0.035);
     const segs=[];if(!at(t.i,t.j+1))segs.push([x-hw,y+D,x,y+hh+D]);if(!at(t.i+1,t.j))segs.push([x,y+hh+D,x+hw,y+D]);
     for(const s of segs)line(`rgba(255,255,255,${(fa*(0.45+0.55*w)).toFixed(3)})`,Math.max(0.8,tw*0.028),s[0],s[1]+off,s[2],s[3]+off);
@@ -281,7 +284,7 @@ export function drawFountain(x,y,tw,T){
 
 /* ---------------- 建筑 ---------------- */
 export function drawBuilding(t,x,y,tw,o){
-  const s=tw*0.42,{T,se,dark,glow}=o;
+  const lv=t.blv||1,s=tw*0.42*(1+0.12*(lv-1)),{T,se,dark,glow}=o;
   if(t.bld==='granary'){
     const r=s*0.34,h=s*0.8;
     groundShadow(x,y,s*0.5,s*0.2,0.2);
@@ -341,6 +344,12 @@ export function drawBuilding(t,x,y,tw,o){
     const wv=Math.sin(T*2.2)*s*0.03;
     poly('#f3ead2',fx+s*0.035,fy-s*0.92,fx+s*0.24,fy-s*0.9+wv,fx+s*0.24,fy-s*0.55+wv,fx+s*0.035,fy-s*0.57);
     ctx.fillStyle='#2f5f4f';ctx.fillRect(fx+s*0.1,fy-s*0.82+wv*0.5,s*0.07,s*0.18);
+  }
+  // 升级后的等级标记
+  if(lv>1){
+    const r=Math.max(1.6,tw*0.035);
+    ctx.strokeStyle='rgba(60,40,10,.55)';ctx.lineWidth=1;
+    for(let k=0;k<lv-1;k++){const px=x-s*0.55+k*r*2.6,py=y+s*0.12;ctx.fillStyle='#e2ad2f';ctx.beginPath();ctx.arc(px,py,r,0,Math.PI*2);ctx.fill();ctx.stroke();}
   }
 }
 

@@ -1,8 +1,9 @@
-import { MAP, VKEYS } from '../world/map.js';
+import { MAP, VKEYS, ISLE } from '../world/map.js';
 import { JOBS, TRAITS, SURN, GIVEN, SKIN, HAIR } from './constants.js';
 import { YEAR, ageY } from './clock.js';
 import { random, rand, randi, pick, clamp } from './random.js';
 import { getState, markStateDirty } from './state.js';
+import { canDepart, canMine } from './frontier.js';
 import { defaultSurnameForNewPerson, knownPersonSurname, migratedFamilyName, surnameFromName } from './names.js';
 
 export const ta=p=>p.gender==='女'?'她':'他';
@@ -39,9 +40,9 @@ export function foodDays(){
   const S = getState();let n=0;for(const p of S.people)n+=need(p);return n>0?S.food/n:999;}
 export function chooseJob(p){
   const S = getState();
-  if(S.mine&&random()<0.22)return 'miner';
+  if(S.mine&&canMine(S,p)&&random()<0.22)return 'miner';
   if(S.people.length&&foodDays()<20&&random()<0.55)return p.village==='bay'?'fisher':'farmer';
-  const T={grain:[['farmer',.66],['craftsman',.2],['merchant',.14]],pine:[['woodcutter',.5],['craftsman',.33],['farmer',.17]],bay:[['fisher',.55],['merchant',.28],['craftsman',.17]]}[p.village];
+  const T={grain:[['farmer',.66],['craftsman',.2],['merchant',.14]],pine:[['woodcutter',.5],['craftsman',.33],['farmer',.17]],bay:[['fisher',.55],['merchant',.28],['craftsman',.17]],isle:[['farmer',.42],['fisher',.42],['craftsman',.16]]}[p.village];
   let x=random();for(const [j,w] of T){if((x-=w)<0)return j;}return T[0][0];
 }
 export function freeSlot(v){
@@ -120,11 +121,13 @@ export function notify(p,text){
 }
 export function remove(p,status,cause){
   const S = getState();
-  const i=S.people.indexOf(p);if(i<0)return;S.people.splice(i,1);
+  // 所有普通离开都经过这一道边界；开荒期南屿居民只能由 frontier.returnHome/failExpedition 处理。
+  if(status==='left'&&!canDepart(S,p))return false;
+  const i=S.people.indexOf(p);if(i<0)return false;S.people.splice(i,1);
   p.status=status;p.endDay=S.day;p.cause=cause||'';
   if(status==='dead'){
     S.deaths++;
-    const msg=cause==='寿终'?`在${ageY(p)}岁时安详离世`:cause==='饥饿'?'在饥饿中离世':'因疫病离世';
+    const msg=cause==='寿终'?`在${ageY(p)}岁时安详离世`:cause==='饥饿'?'在饥饿中离世':cause==='风暴'?'在南屿风暴中遇难':'因疫病离世';
     log(p,msg);chron(`${p.name}${msg}。`,'death');notify(p,msg);
     if(cause==='饥饿'){S.hungerDeaths++;S.lastHunger=p.name;}
   }else if(cause==='wander'){S.left++;S.lastLeft=p.name;notify(p,'离开溪谷，去外面闯荡了');log(p,'带着大家的祝福，离开溪谷去外面闯荡');chron(`${p.name} 离开溪谷，去外面闯荡了。`,'leave');}
@@ -135,19 +138,20 @@ export function remove(p,status,cause){
     else if(r>=70&&status==='dead'){q.happiness-=8;log(q,`送别了挚友${p.name}`);}
   }
   S.dead.push(p);if(S.dead.length>150)S.dead.shift();
+  return true;
 }
-export function nearestOf(list,h){let b=null,bd=1e9;for(let k=0;k<3;k++){const c=pick(list);const d=Math.hypot(c.i-h.i,c.j-h.j);if(d<bd){bd=d;b=c;}}return b;}
+export function nearestOf(list,h){if(!list.length)return null;let b=null,bd=1e9;for(let k=0;k<3;k++){const c=pick(list);const d=Math.hypot(c.i-h.i,c.j-h.j);if(d<bd){bd=d;b=c;}}return b;}
 export function assignTarget(p){
   const S = getState();
-  const V=MAP.V[p.village],home=homeTile(p);let t;const r=random();
+  const V=MAP.V[p.village],L=p.village===ISLE?MAP.isle:MAP,home=homeTile(p);let t;const r=random();
   if(!isWorker(p))t=r<0.5?home:r<0.8?V.center:pick(V.slots);
   else if(r<0.62){
     switch(p.job){
-      case 'farmer':t=nearestOf(MAP.fields,home);break;
-      case 'fisher':t=nearestOf(MAP.water,home);break;
-      case 'woodcutter':t=nearestOf(MAP.forest,home);break;
-      case 'miner':t=S.mine?pick(MAP.mineAdj):V.center;break;
-      case 'merchant':t=pick(MAP.plazas);break;
+      case 'farmer':t=nearestOf(L.fields,home)||V.center;break;
+      case 'fisher':t=nearestOf(L.water,home)||V.center;break;
+      case 'woodcutter':t=nearestOf(L.forest,home)||V.center;break;
+      case 'miner':t=S.mine&&canMine(S,p)?pick(MAP.mineAdj):V.center;break;
+      case 'merchant':t=pick(L.plazas);break;
       default:t=random()<0.5?V.center:home;
     }
   }else t=r<0.85?home:V.center;
