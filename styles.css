@@ -264,7 +264,7 @@ details.how p{margin:8px 0 0;max-width:72ch}
 
 .pdesc.warn{color:var(--warn)}
 
-.info{position:absolute;z-index:4;width:min(280px,calc(100% - 20px));max-height:calc(100% - 20px);overflow:auto;padding:12px 14px 12px;border-radius:12px;box-shadow:0 8px 24px rgba(20,30,15,.18);font-size:12.5px;line-height:1.5}
+.info{outline:none;position:absolute;z-index:4;width:min(280px,calc(100% - 20px));max-height:calc(100% - 20px);overflow:auto;padding:12px 14px 12px;border-radius:12px;box-shadow:0 8px 24px rgba(20,30,15,.18);font-size:12.5px;line-height:1.5}
 .info .kick{font-size:11px}
 .info-t{font-weight:650;font-size:15px;margin:2px 22px 6px 0}
 .info-x{position:absolute;top:6px;right:6px;width:26px;height:26px;border:0;background:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;border-radius:6px}

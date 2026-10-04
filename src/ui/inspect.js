@@ -90,7 +90,7 @@ export function describeField(state,t){
 }
 
 export function describeForest(state,t){
-  const ps=workersOf(state,'woodcutter');
+  const ps=workersOf(state,'woodcutter',p=>t.isle?p.village===ISLE:p.village!==ISLE);
   return {
     kicker:t.isle?'南屿 · 林地':'林地',title:t.kind==='pine'?'松林':'阔叶林',
     rows:[['樵夫',`${ps.length} 位，平均技能 ${Math.round(avg(ps,p=>p.skill))}`],['木材收入',techMult(state,'wood')>1?`技术 ${pct(techMult(state,'wood'))}`:'按樵夫手艺计']],

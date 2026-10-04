@@ -1,5 +1,5 @@
-import { MAP, ALL_VKEYS } from '../world/map.js';
-import { workFactor, hardshipFor, frontierBirthCap, frontierTick } from './frontier.js';
+import { MAP, ISLE, ALL_VKEYS } from '../world/map.js';
+import { workFactor, hardshipFor, frontierBirthCap, frontierTick, isPioneering } from './frontier.js';
 import { JOBS } from './constants.js';
 import { YEAR, seasonIndex, ageY } from './clock.js';
 import { random, rand, pick, clamp, has } from './random.js';
@@ -50,7 +50,7 @@ export function tick(){
   }
 
   // 劳作
-  const farmK=[1.0,1.3,1.6,0.25][se]*(S.drought>0?0.3:1)*(S.canal?1.35:1)*techMult(S,'farm');
+  const farmK=[1.0,1.3,1.6,0.25][se]*(S.drought>0?0.3:1)*techMult(S,'farm');
   const fishK=[1.0,1.1,1.0,0.6][se]*(S.drought>0?0.8:1)*techMult(S,'fish');
   const skillK=techMult(S,'skill');
   const bs=buildingStats(S.built);
@@ -62,7 +62,7 @@ export function tick(){
     const k=(0.6+p.skill/125)*(0.4+0.6*p.health/100)*(p.fed<0.8?0.75:1)*(has(p,'勤劳')?1.15:1)*workFactor(S,p);
     let x=0;
     switch(p.job){
-      case 'farmer':{const f=0.46*farmK*k;food+=f;prod.set(p,f);break;}
+      case 'farmer':{const f=0.46*farmK*k*(S.canal&&p.village!==ISLE?1.35:1);food+=f;prod.set(p,f);break;}
       case 'fisher':{const f=0.34*fishK*k;food+=f;prod.set(p,f);break;}
       case 'woodcutter':x=0.95*k*techMult(S,'wood');break;
       case 'miner':x=S.mineClosed>0?0:2.3*k*techMult(S,'mine');break;
@@ -194,6 +194,7 @@ export function tick(){
       if(p.rel[k]<70)continue;const q=living(+k);
       if(!q||q.partner||q.gender===p.gender||q.age<18*YEAR||q.age>50*YEAR)continue;
       if(p.parents.includes(q.id)||q.parents.includes(p.id)||p.parents.some(x=>q.parents.includes(x)))continue;
+      if(isPioneering(S)&&(p.village===ISLE)!==(q.village===ISLE))continue; // 开荒期间不能往返南屿
       p.partner=q.id;q.partner=p.id;
       if(p.village!==q.village){const mv=p.happiness<q.happiness?p:q,st=mv===p?q:p;mv.village=st.village;mv.home=st.home;log(mv,`搬到了${MAP.V[st.village].n}`);}
       else q.home=p.home;

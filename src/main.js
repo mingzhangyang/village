@@ -341,6 +341,7 @@ function canPlace(t,b){
   if(t.slot)return '这是村民盖房子的地方。';
   if(t.mine)return '这里是矿脉。';
   if(t.isle&&!isSettled(S))return isleVisible(S)?'南屿还没有开拓。':'这里是海。';
+  if(t.coast)return '这里是南屿的海岸渔场，不能盖房子。';
   if(t.type!=='grass'&&t.type!=='forest')return '这里不能盖房子。';
   const nv=nearestVillage(t.i,t.j);
   if(nv.d>4.5)return '离村子太远了，没人会来用。';
@@ -1093,8 +1094,10 @@ function renderInfo(){
 }
 function openInfo(target,pt){
   infoTarget=target;const box=$('info');
-  if(box.hidden)infoReturn=document.activeElement;
+  const opening=box.hidden;
+  if(opening)infoReturn=document.activeElement;
   box.hidden=false;renderInfo();if(box.hidden)return;
+  if(opening)box.focus({preventScroll:true});
   const W=$('mapwrap').clientWidth,H=$('mapwrap').clientHeight,bw=box.offsetWidth,bh=box.offsetHeight;
   let x=pt.x+14,y=pt.y-bh/2;
   if(x+bw>W-10)x=pt.x-bw-14;

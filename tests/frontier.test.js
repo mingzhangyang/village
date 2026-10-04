@@ -6,7 +6,7 @@ import { makePerson, seedPopulation, remove } from '../src/simulation/population
 import { newState, normalizeState, setState } from '../src/simulation/state.js';
 import {
   FRONTIER, activeVillages, expeditionChecks, expeditionReady, frontierTick, hardshipFor, islandAdults,
-  isleVisible, launchExpedition, pickSettlers, retryLeft, workFactor,
+  isVolunteer, isleVisible, launchExpedition, pickSettlers, retryLeft, workFactor,
 } from '../src/simulation/frontier.js';
 
 afterEach(() => {
@@ -71,8 +71,7 @@ describe('expedition requirements', () => {
   it('takes volunteers with their partners and young children', () => {
     const state = readyWorld();
     const team = pickSettlers(state);
-    const adults = team.filter(p => p.job !== 'child' && p.job !== 'elder');
-    expect(adults.length).toBeGreaterThanOrEqual(FRONTIER.volunteers);
+    expect(team.filter(isVolunteer).length).toBeGreaterThanOrEqual(FRONTIER.volunteers);
     for (const p of team) {
       if (p.partner) expect(team.map(q => q.id)).toContain(p.partner);
     }
@@ -108,6 +107,24 @@ describe('the pioneer phase', () => {
     expect(retryLeft(state)).toBe(FRONTIER.retryDays);
     expect(expeditionChecks(state).find(c => c.k === 'retry').ok).toBe(false);
     for (const p of team.filter(q => q.status === 'alive')) expect(p.village).toBe(origins[p.id]);
+  });
+
+  it('keeps each family under one roof on the islet and back home', () => {
+    const state = readyWorld();
+    const team = launchExpedition(state);
+    const ids = new Set(team.map(p => p.id));
+    const together = () => {
+      const alive = id => ids.has(id) && state.people.find(q => q.id === id);
+      for (const p of team.filter(q => state.people.includes(q))) {
+        for (const id of [p.partner, ...p.parents]) if (alive(id)) expect(alive(id).home, p.name).toBe(p.home);
+      }
+    };
+    together();
+    for (const p of team) expect(p.home).toBeLessThan(MAP.V[ISLE].slots.length);
+    for (const p of islandAdults(state).slice(0, -FRONTIER.minAdults + 1)) remove(p, 'left');
+    frontierTick(state);
+    expect(state.frontier.stage).toBe('failed');
+    together();
   });
 
   it('fails at the end of the term if morale is too low', () => {

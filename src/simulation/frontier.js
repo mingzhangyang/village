@@ -1,5 +1,5 @@
 // 开拓新土地：远征南屿。门槛高、开荒期艰难，失败会损失全部投入。
-import { ISLE, VKEYS, ALL_VKEYS } from '../world/map.js';
+import { MAP, ISLE, VKEYS, ALL_VKEYS } from '../world/map.js';
 import { YEAR } from './clock.js';
 import { random, rand, clamp } from './random.js';
 import { hasTech, TECHS } from './tech.js';
@@ -78,13 +78,14 @@ export function expeditionReady(state){
   return (st===null||st==='failed')&&expeditionChecks(state).every(c=>c.ok);
 }
 
-// 挑出志愿者，并带上同住的伴侣和年幼的孩子。
+// 挑出志愿者，并带上同住的伴侣和年幼的孩子。随行家属不计入志愿者名额。
 export function pickSettlers(state){
-  const chosen=[],adults=new Set(),byId=new Map(state.people.map(p=>[p.id,p]));
-  const add=p=>{if(!p||chosen.includes(p))return;chosen.push(p);if(worker(p))adults.add(p.id);};
+  const chosen=[],byId=new Map(state.people.map(p=>[p.id,p]));
+  let taken=0;
+  const add=p=>{if(!p||chosen.includes(p))return;chosen.push(p);if(isVolunteer(p))taken++;};
   for(const p of volunteers(state)){
-    if(adults.size>=FRONTIER.volunteers)break;
-    if(adults.has(p.id))continue;
+    if(taken>=FRONTIER.volunteers)break;
+    if(chosen.includes(p))continue;
     add(p);
     const partner=byId.get(p.partner);
     if(partner&&partner.village===p.village)add(partner);
@@ -93,13 +94,24 @@ export function pickSettlers(state){
   return chosen;
 }
 
-// 出发：扣除资源，把开拓者搬上南屿。返回开拓者列表；条件不满足时返回 null。
+// 已经住在 v 的伴侣或父母的宅基地；没有时返回 null。
+function familyHome(state,p,v){
+  const q=state.people.find(q=>q!==p&&q.village===v&&(q.id===p.partner||p.parents.includes(q.id)));
+  return q?q.home:null;
+}
+
+// 出发：扣除资源，把开拓者搬上南屿，一家人住一处。返回开拓者列表；条件不满足时返回 null。
 export function launchExpedition(state){
   if(!expeditionReady(state))return null;
-  const settlers=pickSettlers(state),origin={};
+  const settlers=pickSettlers(state),origin={},slots=MAP.V[ISLE].slots.length;
   state.treasury-=FRONTIER.treasury;
   state.food-=FRONTIER.provisions;
-  settlers.forEach((p,k)=>{origin[p.id]=p.village;p.village=ISLE;p.home=k;log(p,'登上大船，跟着远征队去开拓南屿');});
+  let homes=0;
+  for(const p of settlers){
+    const h=familyHome(state,p,ISLE);
+    origin[p.id]=p.village;p.village=ISLE;p.home=h!=null?h:homes++%slots;
+    log(p,'登上大船，跟着远征队去开拓南屿');
+  }
   state.frontier={stage:'pioneer',start:state.day,origin,tries:((state.frontier&&state.frontier.tries)||0)+1};
   return settlers;
 }
@@ -134,10 +146,12 @@ export function frontierTick(state){
   return {event:'settled',text:`历经 ${FRONTIER.pioneerDays} 日开荒，南屿正式成为溪谷的第四个聚落！`};
 }
 
-// 把一位南屿居民送回故乡：优先回自己出发的聚落，其次跟随伴侣或父母。
+// 把一位南屿居民送回故乡：优先回自己出发的聚落，其次跟随伴侣或父母；
+// 已经回去的伴侣或父母在哪处宅基地，就和他们住在一起。
 export function returnHome(state,p,origin=(state.frontier&&state.frontier.origin)||{}){
   const v=[p.id,p.partner,...p.parents].map(id=>origin[id]).find(k=>VKEYS.includes(k))||'bay';
-  p.village=v;p.home=freeSlot(v);
+  const h=familyHome(state,p,v);
+  p.village=v;p.home=h!=null?h:freeSlot(v);
   return v;
 }
 

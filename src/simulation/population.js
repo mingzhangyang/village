@@ -146,7 +146,7 @@ export function assignTarget(p){
       case 'farmer':t=nearestOf(L.fields,home);break;
       case 'fisher':t=nearestOf(L.water,home);break;
       case 'woodcutter':t=nearestOf(L.forest,home);break;
-      case 'miner':t=S.mine?pick(MAP.mineAdj):V.center;break;
+      case 'miner':t=S.mine&&p.village!==ISLE?pick(MAP.mineAdj):V.center;break;
       case 'merchant':t=pick(L.plazas);break;
       default:t=random()<0.5?V.center:home;
     }
