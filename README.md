@@ -51,6 +51,7 @@ npm run build
 ## 工程结构
 
 - `src/main.js`：界面、DOM 事件和应用组装。
+- `src/ui/scene.js`：地图画布绘制——缓存地形层、海面与水流动画、树木房屋建筑、居民形象、季节天气与夜间灯光。
 - `src/simulation/`：状态、时间、可复现随机流、人口关系、经济 tick 和挑战期限规则。
 - `src/world/map.js`：固定的世界布局。
 - `src/storage/index.js`：可注入 `Storage` 的 Save System v2 实现；浏览器 key 与 schema 保持兼容。
