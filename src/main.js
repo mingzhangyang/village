@@ -423,7 +423,7 @@ async function startChallenge(id){
   const C=CHALLENGES[id];if(!C)return;
   if(!await UiDialog.confirm(`当前自由世界会先保存，挑战使用独立存档，结束后可以原样返回。`,{title:`开始“${C.n}”吗？`,confirmLabel:'开始挑战'}))return;
   saveNow();
-  installState(null,true);
+  installState(null,true,C.n);
   S.ch={id,start:S.day,hd0:S.hungerDeaths,left0:S.left,hold:0,result:null,txt:'',pct:0};
   if(C.setup)C.setup();
   chron(`挑战开始：${C.n}。${C.d}`,'event');

@@ -26,7 +26,7 @@ function ensureHost(){
   document.getElementById('askCancel').addEventListener('click',()=>finish(null));
   document.getElementById('askOk').addEventListener('click',()=>finish(readValue()));
   document.addEventListener('keydown',event=>{
-    if(!host||host.hidden)return;
+    if(!host||host.hidden||event.isComposing)return;
     if(event.key==='Escape'&&!document.getElementById('askCancel').hidden){
       event.preventDefault();finish(null);return;
     }
