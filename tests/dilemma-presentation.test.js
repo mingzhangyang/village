@@ -31,6 +31,16 @@ describe('dilemma presentation ownership',()=>{
     expect(pendingDilemmaIsValid({k:'missing',d:{},res:null},dilemmas)).toBe(false);
   });
 
+  it('can invalidate captured entity relationships after the world changes',()=>{
+    let petitioner={village:'grain'};
+    const dilemmas={taxcut:{valid:d=>!!petitioner&&petitioner.village===d.v}};
+    const pending={k:'taxcut',d:{p:7,v:'grain'},res:null};
+
+    expect(pendingDilemmaIsValid(pending,dilemmas)).toBe(true);
+    petitioner={...petitioner,village:'bay'};
+    expect(pendingDilemmaIsValid(pending,dilemmas)).toBe(false);
+  });
+
   it('treats failing validators as stale instead of allowing a renderer crash',()=>{
     expect(pendingDilemmaIsValid({k:'broken',d:{},res:null},{broken:{valid(){throw new Error('stale');}}})).toBe(false);
   });

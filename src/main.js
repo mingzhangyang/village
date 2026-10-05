@@ -119,7 +119,7 @@ const DILEMMAS={
   },
   taxcut:{
     when(){if(S.tax<0.08)return null;const v=pick(activeVillages(S));const ps=S.people.filter(q=>q.village===v&&isWorker(q));return ps.length?{v,p:pick(ps).id}:null;},
-    valid:d=>S.tax>=0.08&&!!living(d.p)&&activeVillages(S).includes(d.v),
+    valid:d=>{const p=living(d.p);return S.tax>=0.08&&!!p&&p.village===d.v&&activeVillages(S).includes(d.v);},
     title:()=>'减税请愿',
     text:d=>`${nm(d.p)}带着${VN(d.v)}的十几个人来请愿：日子过得紧巴，希望把生产税率从 ${Math.round(S.tax*100)}% 降到 ${Math.max(0,Math.round(S.tax*100)-5)}%。`,
     opts:d=>[
