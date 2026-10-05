@@ -54,6 +54,15 @@ describe('in-app dialog interaction contract',()=>{
     expect(doc.activeElement).toBe(opener);
   });
 
+  it('confirms the primary action with Enter and restores focus',async()=>{
+    const {doc,opener,ui}=setup();
+    const result=ui.confirm('继续？');
+    expect(doc.activeElement).toBe(doc.getElementById('askOk'));
+    doc.keydown('Enter');
+    await expect(result).resolves.toBe(true);
+    expect(doc.activeElement).toBe(opener);
+  });
+
   it('does not submit prompts while IME composition is active',async()=>{
     const {doc,ui}=setup();
     const result=ui.prompt('命名',{defaultValue:'溪谷'});

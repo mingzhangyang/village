@@ -8,6 +8,7 @@ import { buildingStats, statOf, totalBonus, WELL_HEAL, WELL_PLAGUE, TEA_SOCIAL }
 import { TECHS, SHIP_INTERVAL, hasTech, techBonus, techMult, advanceResearch } from './tech.js';
 import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './explainability.js';
 import { isWorker, need, log, chron, notify, living, makePerson, setRel, changeRel, remove, assignTarget, foodDays, chooseJob, friendCount } from './population.js';
+import { MAX_STAT_HISTORY_ENTRIES } from '../state-contract.js';
 
 let hooks = {};
 
@@ -22,7 +23,7 @@ const foodCapacity = () => hooks.foodCapacity?.() ?? 450;
 export function pushHist(){
   const S = getState();
   const P=S.people,H=S.hist,n=P.length||1;
-  const add=(k,v)=>{H[k].push(v);if(H[k].length>90)H[k].shift();};
+  const add=(k,v)=>{H[k].push(v);if(H[k].length>MAX_STAT_HISTORY_ENTRIES)H[k].splice(0,H[k].length-MAX_STAT_HISTORY_ENTRIES);};
   add('pop',P.length);add('food',S.food);
   add('wealth',P.reduce((t,p)=>t+Math.max(0,p.wealth),0)+S.treasury);
   add('happy',P.reduce((t,p)=>t+p.happiness,0)/n);add('coh',S.cohesion);

@@ -3,7 +3,7 @@ import { knownPersonSurname, migratedFamilyName } from './names.js';
 import { normalizeTech } from './tech.js';
 import { normalizeFrontier } from './frontier.js';
 import { clampResidentHappiness, normalizeWorldName } from './invariants.js';
-import { MAX_CHRON_ENTRIES, MAX_PERSON_HISTORY_ENTRIES, freshOnboarding, normalizeOnboarding } from '../state-contract.js';
+import { MAX_CHRON_ENTRIES, MAX_PERSON_HISTORY_ENTRIES, MAX_STAT_HISTORY_ENTRIES, freshOnboarding, normalizeOnboarding } from '../state-contract.js';
 
 let activeState = null;
 let onDirty = () => {};
@@ -317,9 +317,13 @@ export function normalizeState(raw){
   state.rngState=Number.isFinite(o.rngState)?normalizeSeed(o.rngState):seed;
   state.cd=Object.assign({},base.cd,o.cd||{});
   state.hist=Object.assign({},base.hist,o.hist||{});
-  for(const k of ['pop','food','wealth','happy','coh'])if(!Array.isArray(state.hist[k]))state.hist[k]=[];
+  for(const k of ['pop','food','wealth','happy','coh']){
+    const values=Array.isArray(state.hist[k])?state.hist[k]:[];
+    state.hist[k]=values.filter(Number.isFinite).slice(-MAX_STAT_HISTORY_ENTRIES);
+  }
   for(const k of ['people','dead','built','watch','alerts','chron'])if(!Array.isArray(state[k]))state[k]=[];
   state.chron=state.chron.slice(-MAX_CHRON_ENTRIES);
+  state.chronVer=Number.isFinite(o.chronVer)&&o.chronVer>=0?Math.floor(o.chronVer):state.chron.length;
   for(const person of [...state.people,...state.dead]){
     if(!person||typeof person!=='object')continue;
     person.hist=Array.isArray(person.hist)?person.hist.slice(-MAX_PERSON_HISTORY_ENTRIES):[];

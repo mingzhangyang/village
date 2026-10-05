@@ -2,6 +2,7 @@
 export const MAX_PERSON_NAME_LENGTH = 100;
 export const MAX_CHRON_ENTRIES = 120;
 export const MAX_PERSON_HISTORY_ENTRIES = 60;
+export const MAX_STAT_HISTORY_ENTRIES = 90;
 
 export const ONBOARDING_VERSION = 1;
 export const ONBOARDING_STEP_NAME = 0;

@@ -1010,7 +1010,7 @@ async function loadFreeSlot(id,fromImport){
   saveNow();
   Storage.loadSlot(id,true);
   if(info.kind==='challenge')Storage.clearChallenge();
-  installState(env.state,false,env.name);closeSaveManager();toast(fromImport?'已导入并加载存档':'已加载存档');
+  installState(env.state,false,env.name);closeSaveManager();toast(fromImport?'已导入并加载存档':'已加载存档');resumeOnboardingIfNeeded();
 }
 $('saveBtn').addEventListener('click',openSaveManager);
 $('saveMdl').addEventListener('click',async e=>{
@@ -1050,7 +1050,7 @@ $('saveImport').addEventListener('change',async e=>{
     saveNow();
     const env=Storage.importText(await file.text()),loaded=Storage.loadSlot(env.id,true);
     if(info.kind==='challenge')Storage.clearChallenge();
-    installState(loaded.state,false,loaded.name);closeSaveManager();toast('已导入并加载存档');
+    installState(loaded.state,false,loaded.name);closeSaveManager();toast('已导入并加载存档');resumeOnboardingIfNeeded();
   }catch(err){await UiDialog.alert(err.message||'导入失败。',{title:'导入失败'});renderSaveManager();}
 });
 
@@ -1333,13 +1333,19 @@ function installState(raw,fresh,worldName=null){
   closeInfo();colorKey='';terrainGen++;lastChron=-1;frontierKey='';for(const k in _c)delete _c[k];
   computeHouses();syncControls();dirty=true;updateUI();
 }
+let onboardingRun=null;
+function needsOnboarding(){return Storage.getActiveInfo().kind==='slot'&&!onboardingComplete(S);}
+function resumeOnboardingIfNeeded(){
+  if(!needsOnboarding()||onboardingRun)return onboardingRun;
+  onboardingRun=firstVisit().catch(err=>{console.error('Onboarding failed',err);toast('新手引导未能完成，请刷新后重试',true);}).finally(()=>{onboardingRun=null;});
+  return onboardingRun;
+}
 function init(){
   const boot=Storage.bootstrap();
   if(boot.session&&boot.session.state)installState(boot.session.state,false,boot.session.name);
   else{installState(null,true,'溪谷 1');Storage.createSlot('溪谷 1',S,true);saveNow();}
   if(boot.migrated)setTimeout(()=>toast('旧版存档已安全迁移到 Save System v2'),60);
   if(boot.migrationError)setTimeout(()=>toast(boot.migrationError,true),60);
-  return Storage.getActiveInfo().kind==='slot'&&!onboardingComplete(S);
 }
 async function firstVisit(){
   S.paused=true;updateUI();
@@ -1355,8 +1361,8 @@ async function firstVisit(){
   S.paused=false;dirty=true;updateUI();saveNow();
 }
 buildStats();buildSeeds();readTheme();
-const needsOnboarding=init();
-if(needsOnboarding)firstVisit();
+init();
+resumeOnboardingIfNeeded();
 if(window.ResizeObserver)new ResizeObserver(resize).observe($('mapwrap'));
 window.addEventListener('resize',resize);
 window.addEventListener('pagehide',saveNow);
