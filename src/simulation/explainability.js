@@ -86,7 +86,7 @@ export function happinessBreakdown({
   return {
     rawTarget,
     target,
-    expectedChange: expectedNext - person.happiness,
+    expectedChange: expectedNext - currentHappiness,
     randomRange: 0.8,
     factors,
   };
