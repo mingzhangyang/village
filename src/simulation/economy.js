@@ -187,7 +187,7 @@ export function tick(){
       teahouseUpgrade:upgradeOf(p.village,'teahouse'),
       frontierHardship:hardshipFor(S,p)
     });
-    setResidentHappiness(p,p.happiness+(why.rawTarget-p.happiness)*0.07+rand(-0.8,0.8));
+    setResidentHappiness(p,p.happiness+(why.target-p.happiness)*0.07+rand(-0.8,0.8));
     if(p.happiness<MIGRATION_RULES.sadHappinessThreshold)p.sadDays++;else p.sadDays=Math.max(0,p.sadDays-1);
     if(p.sadDays===MIGRATION_RULES.warningSadDays&&p.job!=='child'&&canDepart(S,p))notify(p,'愁苦了很久，再这样下去可能会离开溪谷');
   }
