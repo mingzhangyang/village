@@ -26,6 +26,9 @@ button,select,input{font:inherit;color:inherit}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .wrap{max-width:1440px;margin:0 auto;padding:18px clamp(12px,2.4vw,28px) 36px}
 header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 20px;margin-bottom:16px}
+.brand-lockup{display:flex;align-items:center;gap:11px;min-width:0}
+.brand-mark{width:46px;height:46px;flex:none;display:block;filter:drop-shadow(0 2px 5px rgba(50,60,30,.10))}
+.brand-copy{min-width:0}
 h1{font-family:"Noto Serif SC","Songti SC","STSong",serif;font-weight:700;font-size:clamp(21px,2.8vw,30px);margin:0;letter-spacing:.02em;line-height:1.25}
 .sub{margin:4px 0 0;color:var(--muted);font-size:13px}
 .controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
@@ -246,6 +249,8 @@ details.how p{margin:8px 0 0;max-width:72ch}
   .dlg-back{align-items:flex-end;padding:0}
   .dlg{border-radius:18px 18px 0 0;max-height:80vh;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}
   header{align-items:flex-start}
+  .brand-lockup{align-items:flex-start;gap:9px}
+  .brand-mark{width:40px;height:40px}
 }
 
 .save-dlg{max-width:680px}

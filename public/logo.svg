@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">禾境</title>
+  <desc id="desc">山谷与新芽组成的禾境标志</desc>
+  <rect x="32" y="32" width="448" height="448" rx="116" fill="#4F7136"/>
+  <path d="M96 357c54-61 109-92 160-92s106 31 160 92v57H96z" fill="#E2EAD3" opacity=".94"/>
+  <path d="M103 396c52-46 104-69 153-69s101 23 153 69" fill="none" stroke="#FAFBF5" stroke-width="24" stroke-linecap="round" opacity=".98"/>
+  <path d="M256 348V166" stroke="#FAFBF5" stroke-width="30" stroke-linecap="round"/>
+  <path d="M250 230c-49-8-82-31-99-70 54-3 91 18 111 63" fill="#FAFBF5"/>
+  <path d="M262 260c47-10 79-34 96-73-52-1-88 21-108 66" fill="#FAFBF5"/>
+  <path d="M256 174c-7-29 2-54 27-74 14 30 8 56-18 79" fill="#FAFBF5"/>
+</svg>
