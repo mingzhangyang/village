@@ -332,7 +332,7 @@ export function normalizeState(raw){
     person.hist=Array.isArray(person.hist)?person.hist.slice(-MAX_PERSON_HISTORY_ENTRIES):[];
   }
   state.worldName=normalizeWorldName(state.worldName,base.worldName);
-  state.onboarding=normalizeOnboarding(o.onboarding,{legacyComplete:o.onboarding==null});
+  state.onboarding=normalizeOnboarding(o.onboarding,{legacyComplete:false});
   clampResidentHappiness(state);
   normalizeTech(state);
   normalizeFrontier(state);

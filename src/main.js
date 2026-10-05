@@ -20,10 +20,12 @@ import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, res
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
 import { ONBOARDING_STEP_GUIDE, ONBOARDING_STEP_DONE, onboardingComplete, setOnboardingStep } from './state-contract.js';
 import { withTemporaryPause } from './ui/onboarding.js';
+import { createDilemmaPresentation, pendingDilemmaIsValid, shouldAutoDeferDilemma } from './ui/dilemma-presentation.js';
 
 const $=id=>document.getElementById(id);
 const Storage=createHejingStorage(window.localStorage);
 const UiDialog=createUiDialog();
+const DilemmaPresentation=createDilemmaPresentation();
 const WINS='hejing-wins-v1',LEGACY_WINS='hejing-wins';
 let S,observedDay=0;
 const seasonIdx=()=>seasonIndex(S.day);
@@ -117,6 +119,7 @@ const DILEMMAS={
   },
   taxcut:{
     when(){if(S.tax<0.08)return null;const v=pick(activeVillages(S));const ps=S.people.filter(q=>q.village===v&&isWorker(q));return ps.length?{v,p:pick(ps).id}:null;},
+    valid:d=>{const p=living(d.p);return S.tax>=0.08&&!!p&&p.village===d.v&&activeVillages(S).includes(d.v);},
     title:()=>'减税请愿',
     text:d=>`${nm(d.p)}带着${VN(d.v)}的十几个人来请愿：日子过得紧巴，希望把生产税率从 ${Math.round(S.tax*100)}% 降到 ${Math.max(0,Math.round(S.tax*100)-5)}%。`,
     opts:d=>[
@@ -127,6 +130,7 @@ const DILEMMAS={
   },
   levy:{
     when(){if(foodDays()>25&&S.drought===0)return null;const r=adults().sort((a,b)=>b.wealth-a.wealth).slice(0,3);return r.length===3&&r[2].wealth>=20?{ids:r.map(p=>p.id)}:null;},
+    valid:d=>Array.isArray(d.ids)&&d.ids.length===3&&d.ids.every(id=>!!living(id)),
     title:()=>'要不要向富户征钱',
     text:d=>`粮食越来越紧，只够吃 ${Math.floor(foodDays())} 天了。有人提议：向最富的三户，${d.ids.map(nm).join('、')}，征收一半家财，拿去岛外买粮。`,
     opts:d=>[
@@ -143,6 +147,7 @@ const DILEMMAS={
   },
   refugees:{
     when:()=>({n:randi(3,4),v:pick(activeVillages(S))}),
+    valid:d=>activeVillages(S).includes(d.v),
     title:()=>'岸边的逃荒者',
     text:d=>`一家 ${d.n} 口人坐着破船漂到${VN(d.v)}附近的岸边，衣衫褴褛，请求留下来。粮仓还够吃 ${Math.floor(foodDays())} 天。`,
     opts:d=>[
@@ -159,6 +164,7 @@ const DILEMMAS={
     ]
   },
   dispute:{
+    valid:d=>!!living(d.a)&&!!living(d.b),
     when(){
       for(const p of S.people){if(p.job==='child')continue;for(const k in p.rel){if(p.rel[k]<=-15){const q=living(+k);if(q&&q.job!=='child')return {a:p.id,b:q.id};}}}
       const v=pick(activeVillages(S)),ps=S.people.filter(q=>q.village===v&&isWorker(q));if(ps.length<2)return null;
@@ -180,6 +186,7 @@ const DILEMMAS={
       ];}
   },
   school:{
+    valid:d=>!S.school&&!!living(d.p)&&S.people.filter(p=>p.job==='child').length>=3,
     when(){if(S.school||S.treasury<80)return null;const kids=S.people.filter(p=>p.job==='child').length;if(kids<3)return null;
       const ps=S.people.filter(p=>p.job==='elder'||p.job==='craftsman'),p=ps.length?pick(ps):pick(adults());return p?{p:p.id,kids}:null;},
     title:()=>'办一间学堂',
@@ -192,6 +199,7 @@ const DILEMMAS={
     ]
   },
   cave:{
+    valid:()=>S.mine&&!S.mineClosed&&S.people.some(p=>p.job==='miner'&&canMine(S,p)),
     when:()=>S.mine&&!S.mineClosed&&S.people.some(p=>p.job==='miner'&&canMine(S,p))?{}:null,
     title:()=>'矿洞的裂缝',
     text:()=>'矿工们发现主矿洞顶上出现了一道裂缝。停工整修十日会少挣不少钱，继续开采则可能出事。',
@@ -204,6 +212,7 @@ const DILEMMAS={
     ]
   },
   sick:{
+    valid:d=>{const p=living(d.p);return !!p&&p.health<55;},
     when(){const ps=S.people.filter(q=>q.health<55).sort((a,b)=>a.health-b.health);return ps.length?{p:ps[0].id}:null;},
     title:()=>'请不请郎中',
     text:d=>{const p=byId(d.p);return `${p.name}病得很重，健康只剩 ${Math.max(0,Math.round(p.health))}。从岛外请郎中要花公库 30 金。`;},
@@ -215,6 +224,7 @@ const DILEMMAS={
     ]
   },
   wander:{
+    valid:d=>{const p=living(d.p);return !!p&&migrationBreakdown(p).wanderEligible&&canDepart(S,p);},
     when(){const ps=S.people.filter(q=>migrationBreakdown(q).wanderEligible&&canDepart(S,q));return ps.length?{p:pick(ps).id}:null;},
     title:()=>'想出去闯闯的年轻人',
     text:d=>{const p=byId(d.p);return `${p.name}（${ageY(p)}岁，${JOBS[p.job].n}）说岛上的日子一眼望得到头，想去外面闯一闯。`;},
@@ -226,6 +236,7 @@ const DILEMMAS={
     ];}
   },
   isle:{
+    valid:()=>isPioneering(S)&&islanders(S).length>0,
     when:()=>isPioneering(S)&&islanders(S).length?{}:null,
     title:()=>'南屿来信',
     text:()=>`南屿的开拓者捎信回来：海风大、粮食紧，有人病倒了。岛上现在有 ${islandAdults(S).length} 位劳力（少于 ${FRONTIER.minAdults} 位远征就会失败），平均幸福 ${Math.round(islandMorale(S))}（开荒期满时要达到 ${FRONTIER.minMorale}）。`,
@@ -247,27 +258,33 @@ const DILEMMAS={
     ]
   }
 };
-let dilemmaDeferred=false;
+function expireStalePendingDilemma(){
+  if(!S.pending||pendingDilemmaIsValid(S.pending,DILEMMAS))return false;
+  const stale=S.pending,D=DILEMMAS[stale.k],title=D?D.title(stale.d):'待决事项';
+  S.pending=null;DilemmaPresentation.clear();dlgKey='';
+  chron(`待决事项“${title}”因情势变化已失效。`,'info');dirty=true;
+  return true;
+}
 function maybeDilemma(){
   if(!S.dilemmasOn||S.pending||S.day<S.nextDilemma||!S.people.length)return;
   const c=[];
   for(const k in DILEMMAS){if(k===S.lastDil)continue;const d=DILEMMAS[k].when();if(d)c.push([k,d,k==='isle'?4:k==='levy'?3:k==='sick'?2:1]);}
   if(!c.length){S.nextDilemma=S.day+5;return;}
   let x=random()*c.reduce((t,e)=>t+e[2],0);
-  for(const [k,d,w] of c){if((x-=w)<0){S.pending={k,d,res:null};S.lastDil=k;S.nextDilemma=S.day+randi(28,45);dilemmaDeferred=false;dirty=true;return;}}
+  for(const [k,d,w] of c){if((x-=w)<0){S.pending={k,d,res:null};S.lastDil=k;S.nextDilemma=S.day+randi(28,45);DilemmaPresentation.present({deferred:shouldAutoDeferDilemma(S.speed)});dirty=true;return;}}
 }
 let dlgKey='',dlgReturnFocus=null;
 function renderDilemma(){
   const box=$('dlg');
   if(!S.pending){
-    const wasOpen=!box.hidden;box.hidden=true;$('pendingBtn').hidden=true;dlgKey='';dilemmaDeferred=false;
+    const wasOpen=!box.hidden;box.hidden=true;$('pendingBtn').hidden=true;dlgKey='';DilemmaPresentation.clear();
     if(wasOpen&&dlgReturnFocus&&typeof dlgReturnFocus.focus==='function')dlgReturnFocus.focus({preventScroll:true});
     dlgReturnFocus=null;return;
   }
-  if(dilemmaDeferred){box.hidden=true;$('pendingBtn').hidden=false;return;}
+  if(!pendingDilemmaIsValid(S.pending,DILEMMAS)){box.hidden=true;$('pendingBtn').hidden=true;return;}
+  if(DilemmaPresentation.isDeferred()){box.hidden=true;$('pendingBtn').hidden=false;return;}
   $('pendingBtn').hidden=true;
   const {k,d,res}=S.pending,D=DILEMMAS[k];
-  if(!D){S.pending=null;box.hidden=true;return;}
   const key=k+'|'+(res==null?0:1)+'|'+JSON.stringify(d);
   if(key===dlgKey)return;dlgKey=key;
   $('dlgT').textContent=D.title(d);
@@ -286,13 +303,14 @@ function renderDilemma(){
 }
 $('dlgO').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||!S.pending)return;
-  if(b.id==='dlgLater'){dilemmaDeferred=true;dlgKey='';$('dlg').hidden=true;$('pendingBtn').hidden=false;dlgReturnFocus=null;$('pendingBtn').focus({preventScroll:true});dirty=true;return;}
-  if(b.id==='dlgDone'){S.pending=null;dilemmaDeferred=false;dirty=true;updateUI();return;}
+  if(expireStalePendingDilemma()){updateUI();return;}
+  if(b.id==='dlgLater'){DilemmaPresentation.defer();dlgKey='';$('dlg').hidden=true;$('pendingBtn').hidden=false;dlgReturnFocus=null;$('pendingBtn').focus({preventScroll:true});dirty=true;return;}
+  if(b.id==='dlgDone'){S.pending=null;DilemmaPresentation.clear();dirty=true;updateUI();return;}
   const o=DILEMMAS[S.pending.k].opts(S.pending.d)[+b.dataset.i];if(!o||(o.ok&&!o.ok()))return;
   const r=o.go()||'就这么定了。';S.pending.res=r;
   chron(`你的决定：${o.t}。${r}`,'choice');dirty=true;updateUI();
 });
-$('pendingBtn').addEventListener('click',()=>{$('play').focus({preventScroll:true});dilemmaDeferred=false;dirty=true;renderDilemma();});
+$('pendingBtn').addEventListener('click',()=>{$('play').focus({preventScroll:true});DilemmaPresentation.reopen();dirty=true;renderDilemma();});
 
 /* ---------------- 伸出援手 ---------------- */
 const HELP={
@@ -1011,7 +1029,7 @@ async function loadFreeSlot(id,fromImport){
   saveNow();
   Storage.loadSlot(id,true);
   if(info.kind==='challenge')Storage.clearChallenge();
-  installState(env.state,false,env.name);closeSaveManager();toast(fromImport?'已导入并加载存档':'已加载存档');resumeOnboardingIfNeeded();
+  installState(env.state,false,env.name);closeSaveManager();toast(fromImport?'已导入并加载存档':'已加载存档');
 }
 $('saveBtn').addEventListener('click',openSaveManager);
 $('saveMdl').addEventListener('click',async e=>{
@@ -1030,7 +1048,7 @@ $('saveMdl').addEventListener('click',async e=>{
       const fallback=`溪谷 ${Storage.listSlots().length+1}`;
       const name=await UiDialog.prompt('给新世界起个名字。',{title:'新建世界',defaultValue:fallback,confirmLabel:'创建'});if(name===null)return;
       const next=normalizeWorldName(name,fallback);
-      saveNow();installState(null,true,next);setOnboardingStep(S,ONBOARDING_STEP_DONE);
+      saveNow();installState(null,true,next);setOnboardingStep(S,ONBOARDING_STEP_GUIDE);
       Storage.createSlot(next,S,true);if(info.kind==='challenge')Storage.clearChallenge();
       saveNow();closeSaveManager();toast('新世界已创建');return;
     }
@@ -1051,7 +1069,7 @@ $('saveImport').addEventListener('change',async e=>{
     saveNow();
     const env=Storage.importText(await file.text()),loaded=Storage.loadSlot(env.id,true);
     if(info.kind==='challenge')Storage.clearChallenge();
-    installState(loaded.state,false,loaded.name);closeSaveManager();toast('已导入并加载存档');resumeOnboardingIfNeeded();
+    installState(loaded.state,false,loaded.name);closeSaveManager();toast('已导入并加载存档');
   }catch(err){await UiDialog.alert(err.message||'导入失败。',{title:'导入失败'});renderSaveManager();}
 });
 
@@ -1280,7 +1298,7 @@ $('reset').onclick=async()=>{
     return;
   }
   if(!await UiDialog.confirm('这个存档槽会被新的世界覆盖，且无法恢复。',{title:`确定重来“${info.name||'当前世界'}”吗？`,confirmLabel:'重新开始'}))return;
-  installState(null,true,info.name||S.worldName);setOnboardingStep(S,ONBOARDING_STEP_DONE);saveNow();toast('当前存档已重新开始');
+  installState(null,true,info.name||S.worldName);saveNow();toast('当前存档已重新开始');
 };
 $('tax').addEventListener('input',e=>{S.tax=+e.target.value/100;$('taxv').textContent=e.target.value+'%';});
 $('policy').addEventListener('change',e=>{S.policy=e.target.value;$('policyDesc').textContent=POLICIES[S.policy];chron(`溪谷改行“${e.target.selectedOptions[0].textContent}”。`,'info');updateUI();});
@@ -1319,15 +1337,15 @@ function guardDay(){
   observedDay=S.day;
 }
 function frame(now){
-  const dt=Math.min(0.1,(now-last)/1000);last=now;guardDay();
-  if(!S.paused&&!S.pending&&!S.alerts.length&&mdlHidden()&&S.people.length){acc+=dt*TPS[S.speed];let n=0;while(acc>=1&&n<6){tick();guardDay();acc-=1;n++;}if(n)dirty=true;}
+  const dt=Math.min(0.1,(now-last)/1000);last=now;guardDay();expireStalePendingDilemma();
+  if(!S.paused&&!DilemmaPresentation.blocksSimulation(S.pending)&&!S.alerts.length&&mdlHidden()&&S.people.length){acc+=dt*TPS[S.speed];let n=0;while(acc>=1&&n<6){tick();guardDay();acc-=1;n++;}if(n)dirty=true;}
   movePeople(dt);draw(now);
   if(dirty&&now-lastUI>200){updateUI();lastUI=now;dirty=false;}
   if(now-lastSave>5000){lastSave=now;saveNow();}
   requestAnimationFrame(frame);
 }
 function installState(raw,fresh,worldName=null){
-  S=fresh?newState():normalizeState(raw);if(worldName!==null)S.worldName=normalizeWorldName(worldName,S.worldName);setState(S);S.paused=false;observedDay=S.day;dilemmaDeferred=false;
+  S=fresh?newState():normalizeState(raw);if(worldName!==null)S.worldName=normalizeWorldName(worldName,S.worldName);setState(S);S.paused=false;observedDay=S.day;DilemmaPresentation.restore(S.pending);
   if(!S.people.length){
     seedPopulation();
     chron('第1年春。三十个人在溪谷群岛上开始了他们的生活。','info');
@@ -1335,7 +1353,8 @@ function installState(raw,fresh,worldName=null){
   }
   applyBuilt();
   closeInfo();colorKey='';terrainGen++;lastChron=-1;frontierKey='';for(const k in _c)delete _c[k];
-  computeHouses();syncControls();dirty=true;updateUI();
+  computeHouses();expireStalePendingDilemma();syncControls();dirty=true;updateUI();
+  queueMicrotask(resumeOnboardingIfNeeded);
 }
 let onboardingRun=null;
 function needsOnboarding(){return Storage.getActiveInfo().kind==='slot'&&!onboardingComplete(S);}
@@ -1371,7 +1390,6 @@ async function firstVisit(){
 }
 buildStats();buildSeeds();readTheme();
 init();
-resumeOnboardingIfNeeded();
 if(window.ResizeObserver)new ResizeObserver(resize).observe($('mapwrap'));
 window.addEventListener('resize',resize);
 window.addEventListener('pagehide',saveNow);

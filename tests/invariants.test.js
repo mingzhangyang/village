@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { adjustResidentHappiness, monotonicDay, normalizeWorldName, setResidentHappiness } from '../src/simulation/invariants.js';
 import { newState, normalizeState } from '../src/simulation/state.js';
-import { MAX_CHRON_ENTRIES, MAX_PERSON_HISTORY_ENTRIES, MAX_STAT_HISTORY_ENTRIES, ONBOARDING_STEP_GUIDE, ONBOARDING_STEP_DONE, onboardingComplete, setOnboardingStep } from '../src/state-contract.js';
+import { MAX_CHRON_ENTRIES, MAX_PERSON_HISTORY_ENTRIES, MAX_STAT_HISTORY_ENTRIES, ONBOARDING_STEP_NAME, ONBOARDING_STEP_GUIDE, ONBOARDING_STEP_DONE, onboardingComplete, setOnboardingStep } from '../src/state-contract.js';
 
 describe('simulation state invariants', () => {
   it('clamps resident happiness when loading saves', () => {
@@ -96,7 +96,7 @@ describe('simulation state invariants', () => {
     expect(normalized.people[0].hist[0].d).toBe(15);
   });
 
-  it('makes onboarding resumable while treating legacy saves as complete', () => {
+  it('makes onboarding resumable and upgrades older worlds into the current guide', () => {
     const fresh=newState(23);
     expect(onboardingComplete(fresh)).toBe(false);
     setOnboardingStep(fresh,ONBOARDING_STEP_GUIDE);
@@ -104,7 +104,13 @@ describe('simulation state invariants', () => {
 
     const legacy=newState(24);delete legacy.onboarding;
     const normalizedLegacy=normalizeState(legacy);
-    expect(normalizedLegacy.onboarding.step).toBe(ONBOARDING_STEP_DONE);
-    expect(onboardingComplete(normalizedLegacy)).toBe(true);
+    expect(normalizedLegacy.onboarding.step).toBe(ONBOARDING_STEP_NAME);
+    expect(onboardingComplete(normalizedLegacy)).toBe(false);
+
+    const previousGuide=newState(25);
+    previousGuide.onboarding={version:1,step:ONBOARDING_STEP_DONE};
+    const normalizedPrevious=normalizeState(previousGuide);
+    expect(normalizedPrevious.onboarding.step).toBe(ONBOARDING_STEP_NAME);
+    expect(onboardingComplete(normalizedPrevious)).toBe(false);
   });
 });
