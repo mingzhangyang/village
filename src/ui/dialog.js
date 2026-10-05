@@ -46,7 +46,7 @@ export function createUiDialog(doc=globalThis.document){
         event.preventDefault();finish(!cancelEl.hidden&&cancelEl.contains(event.target)?null:(inputEl.hidden?true:inputEl.value.trim()));return;
       }
       if(event.key!=='Tab')return;
-      const focusable=[cancelEl,inputEl,okEl].filter(el=>!el.hidden&&!el.disabled&&visible(el));
+      const focusable=[inputEl,cancelEl,okEl].filter(el=>!el.hidden&&!el.disabled&&visible(el));
       if(!focusable.length){event.preventDefault();dlg.focus();return;}
       const first=focusable[0],last=focusable[focusable.length-1],active=doc.activeElement;
       if(event.shiftKey&&(active===first||active===dlg)){event.preventDefault();last.focus();}

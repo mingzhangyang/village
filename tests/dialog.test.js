@@ -94,6 +94,17 @@ describe('in-app dialog interaction contract',()=>{
     cancel.click();await result;
   });
 
+  it('keeps prompt focus cycling in DOM order',async()=>{
+    const {doc,ui}=setup();
+    const result=ui.prompt('命名',{defaultValue:'溪谷'});
+    const input=doc.getElementById('askInput'),cancel=doc.getElementById('askCancel'),ok=doc.getElementById('askOk');
+    expect(doc.activeElement).toBe(input);
+    doc.keydown('Tab',{shiftKey:true});expect(doc.activeElement).toBe(ok);
+    doc.keydown('Tab');expect(doc.activeElement).toBe(input);
+    input.focus();doc.keydown('Tab');expect(doc.activeElement).toBe(cancel);
+    cancel.click();await result;
+  });
+
   it('does not let Escape dismiss alert-only dialogs',async()=>{
     const {doc,ui}=setup();
     const result=ui.alert('提示');
