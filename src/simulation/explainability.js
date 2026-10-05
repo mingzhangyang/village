@@ -81,7 +81,8 @@ export function happinessBreakdown({
   rawTarget += frontierValue;
 
   const target = clamp(rawTarget, 0, 100);
-  const expectedNext = clamp(person.happiness + (rawTarget - person.happiness) * 0.07, 0, 100);
+  const currentHappiness = clamp(Number.isFinite(person.happiness) ? person.happiness : 50, 0, 100);
+  const expectedNext = clamp(currentHappiness + (target - currentHappiness) * 0.07, 0, 100);
   return {
     rawTarget,
     target,
