@@ -20,10 +20,12 @@ import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, res
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
 import { ONBOARDING_STEP_GUIDE, ONBOARDING_STEP_DONE, onboardingComplete, setOnboardingStep } from './state-contract.js';
 import { withTemporaryPause } from './ui/onboarding.js';
+import { createDilemmaPresentation, shouldAutoDeferDilemma } from './ui/dilemma-presentation.js';
 
 const $=id=>document.getElementById(id);
 const Storage=createHejingStorage(window.localStorage);
 const UiDialog=createUiDialog();
+const DilemmaPresentation=createDilemmaPresentation();
 const WINS='hejing-wins-v1',LEGACY_WINS='hejing-wins';
 let S,observedDay=0;
 const seasonIdx=()=>seasonIndex(S.day);
@@ -247,27 +249,26 @@ const DILEMMAS={
     ]
   }
 };
-let dilemmaDeferred=false;
 function maybeDilemma(){
   if(!S.dilemmasOn||S.pending||S.day<S.nextDilemma||!S.people.length)return;
   const c=[];
   for(const k in DILEMMAS){if(k===S.lastDil)continue;const d=DILEMMAS[k].when();if(d)c.push([k,d,k==='isle'?4:k==='levy'?3:k==='sick'?2:1]);}
   if(!c.length){S.nextDilemma=S.day+5;return;}
   let x=random()*c.reduce((t,e)=>t+e[2],0);
-  for(const [k,d,w] of c){if((x-=w)<0){S.pending={k,d,res:null};S.lastDil=k;S.nextDilemma=S.day+randi(28,45);dilemmaDeferred=false;dirty=true;return;}}
+  for(const [k,d,w] of c){if((x-=w)<0){S.pending={k,d,res:null};S.lastDil=k;S.nextDilemma=S.day+randi(28,45);DilemmaPresentation.present({deferred:shouldAutoDeferDilemma(S.speed)});dirty=true;return;}}
 }
 let dlgKey='',dlgReturnFocus=null;
 function renderDilemma(){
   const box=$('dlg');
   if(!S.pending){
-    const wasOpen=!box.hidden;box.hidden=true;$('pendingBtn').hidden=true;dlgKey='';dilemmaDeferred=false;
+    const wasOpen=!box.hidden;box.hidden=true;$('pendingBtn').hidden=true;dlgKey='';DilemmaPresentation.clear();
     if(wasOpen&&dlgReturnFocus&&typeof dlgReturnFocus.focus==='function')dlgReturnFocus.focus({preventScroll:true});
     dlgReturnFocus=null;return;
   }
-  if(dilemmaDeferred){box.hidden=true;$('pendingBtn').hidden=false;return;}
+  if(DilemmaPresentation.isDeferred()){box.hidden=true;$('pendingBtn').hidden=false;return;}
   $('pendingBtn').hidden=true;
   const {k,d,res}=S.pending,D=DILEMMAS[k];
-  if(!D){S.pending=null;box.hidden=true;return;}
+  if(!D){S.pending=null;DilemmaPresentation.clear();box.hidden=true;return;}
   const key=k+'|'+(res==null?0:1)+'|'+JSON.stringify(d);
   if(key===dlgKey)return;dlgKey=key;
   $('dlgT').textContent=D.title(d);
@@ -286,13 +287,13 @@ function renderDilemma(){
 }
 $('dlgO').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||!S.pending)return;
-  if(b.id==='dlgLater'){dilemmaDeferred=true;dlgKey='';$('dlg').hidden=true;$('pendingBtn').hidden=false;dlgReturnFocus=null;$('pendingBtn').focus({preventScroll:true});dirty=true;return;}
-  if(b.id==='dlgDone'){S.pending=null;dilemmaDeferred=false;dirty=true;updateUI();return;}
+  if(b.id==='dlgLater'){DilemmaPresentation.defer();dlgKey='';$('dlg').hidden=true;$('pendingBtn').hidden=false;dlgReturnFocus=null;$('pendingBtn').focus({preventScroll:true});dirty=true;return;}
+  if(b.id==='dlgDone'){S.pending=null;DilemmaPresentation.clear();dirty=true;updateUI();return;}
   const o=DILEMMAS[S.pending.k].opts(S.pending.d)[+b.dataset.i];if(!o||(o.ok&&!o.ok()))return;
   const r=o.go()||'就这么定了。';S.pending.res=r;
   chron(`你的决定：${o.t}。${r}`,'choice');dirty=true;updateUI();
 });
-$('pendingBtn').addEventListener('click',()=>{$('play').focus({preventScroll:true});dilemmaDeferred=false;dirty=true;renderDilemma();});
+$('pendingBtn').addEventListener('click',()=>{$('play').focus({preventScroll:true});DilemmaPresentation.reopen();dirty=true;renderDilemma();});
 
 /* ---------------- 伸出援手 ---------------- */
 const HELP={
@@ -1030,9 +1031,9 @@ $('saveMdl').addEventListener('click',async e=>{
       const fallback=`溪谷 ${Storage.listSlots().length+1}`;
       const name=await UiDialog.prompt('给新世界起个名字。',{title:'新建世界',defaultValue:fallback,confirmLabel:'创建'});if(name===null)return;
       const next=normalizeWorldName(name,fallback);
-      saveNow();installState(null,true,next);setOnboardingStep(S,ONBOARDING_STEP_DONE);
+      saveNow();installState(null,true,next);setOnboardingStep(S,ONBOARDING_STEP_GUIDE);
       Storage.createSlot(next,S,true);if(info.kind==='challenge')Storage.clearChallenge();
-      saveNow();closeSaveManager();toast('新世界已创建');return;
+      saveNow();closeSaveManager();toast('新世界已创建');resumeOnboardingIfNeeded();return;
     }
     if(act==='load'){await loadFreeSlot(id,false);return;}
     if(act==='rename'){
@@ -1280,7 +1281,7 @@ $('reset').onclick=async()=>{
     return;
   }
   if(!await UiDialog.confirm('这个存档槽会被新的世界覆盖，且无法恢复。',{title:`确定重来“${info.name||'当前世界'}”吗？`,confirmLabel:'重新开始'}))return;
-  installState(null,true,info.name||S.worldName);setOnboardingStep(S,ONBOARDING_STEP_DONE);saveNow();toast('当前存档已重新开始');
+  installState(null,true,info.name||S.worldName);saveNow();toast('当前存档已重新开始');resumeOnboardingIfNeeded();
 };
 $('tax').addEventListener('input',e=>{S.tax=+e.target.value/100;$('taxv').textContent=e.target.value+'%';});
 $('policy').addEventListener('change',e=>{S.policy=e.target.value;$('policyDesc').textContent=POLICIES[S.policy];chron(`溪谷改行“${e.target.selectedOptions[0].textContent}”。`,'info');updateUI();});
@@ -1320,14 +1321,14 @@ function guardDay(){
 }
 function frame(now){
   const dt=Math.min(0.1,(now-last)/1000);last=now;guardDay();
-  if(!S.paused&&!S.pending&&!S.alerts.length&&mdlHidden()&&S.people.length){acc+=dt*TPS[S.speed];let n=0;while(acc>=1&&n<6){tick();guardDay();acc-=1;n++;}if(n)dirty=true;}
+  if(!S.paused&&!DilemmaPresentation.blocksSimulation(S.pending)&&!S.alerts.length&&mdlHidden()&&S.people.length){acc+=dt*TPS[S.speed];let n=0;while(acc>=1&&n<6){tick();guardDay();acc-=1;n++;}if(n)dirty=true;}
   movePeople(dt);draw(now);
   if(dirty&&now-lastUI>200){updateUI();lastUI=now;dirty=false;}
   if(now-lastSave>5000){lastSave=now;saveNow();}
   requestAnimationFrame(frame);
 }
 function installState(raw,fresh,worldName=null){
-  S=fresh?newState():normalizeState(raw);if(worldName!==null)S.worldName=normalizeWorldName(worldName,S.worldName);setState(S);S.paused=false;observedDay=S.day;dilemmaDeferred=false;
+  S=fresh?newState():normalizeState(raw);if(worldName!==null)S.worldName=normalizeWorldName(worldName,S.worldName);setState(S);S.paused=false;observedDay=S.day;DilemmaPresentation.restore(S.pending);
   if(!S.people.length){
     seedPopulation();
     chron('第1年春。三十个人在溪谷群岛上开始了他们的生活。','info');

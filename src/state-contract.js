@@ -22,7 +22,7 @@ export function normalizeChronicleEntry(value,fallbackDay=0){
   };
 }
 
-export const ONBOARDING_VERSION = 1;
+export const ONBOARDING_VERSION = 2;
 export const ONBOARDING_STEP_NAME = 0;
 export const ONBOARDING_STEP_GUIDE = 1;
 export const ONBOARDING_STEP_DONE = 2;
@@ -36,7 +36,7 @@ export function freshOnboarding(){
   return {version:ONBOARDING_VERSION,step:ONBOARDING_STEP_NAME};
 }
 
-export function normalizeOnboarding(value,{legacyComplete=true}={}){
+export function normalizeOnboarding(value,{legacyComplete=false}={}){
   if(!value||typeof value!=='object'||value.version!==ONBOARDING_VERSION){
     return {version:ONBOARDING_VERSION,step:legacyComplete?ONBOARDING_STEP_DONE:ONBOARDING_STEP_NAME};
   }
