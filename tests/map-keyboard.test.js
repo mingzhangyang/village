@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KEYBOARD_DIRECTIONS, moveKeyboardTile, peopleOnKeyboardTile } from '../src/ui/map-keyboard.js';
+import { KEYBOARD_DIRECTIONS, mapAriaLabel, moveKeyboardTile, peopleOnKeyboardTile } from '../src/ui/map-keyboard.js';
 
 describe('keyboard map navigation', () => {
   const openMap={at:(i,j)=>({i,j})};
@@ -29,6 +29,12 @@ describe('keyboard map navigation', () => {
   it('stays put when no visible tile exists in that direction', () => {
     const start={i:10,j:10};
     expect(moveKeyboardTile({at:()=>null},start,'ArrowLeft')).toBe(start);
+  });
+
+  it('derives accessible map labels from the current world name', () => {
+    expect(mapAriaLabel('山海溪谷')).toContain('山海溪谷地图');
+    expect(mapAriaLabel('山海溪谷','键盘光标：麦田')).toContain('键盘光标：麦田');
+    expect(mapAriaLabel('   ')).toContain('溪谷群岛地图');
   });
 
   it('activates only residents occupying the announced keyboard tile', () => {

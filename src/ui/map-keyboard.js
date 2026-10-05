@@ -22,3 +22,11 @@ export function peopleOnKeyboardTile(people,tile){
   if(!tile)return [];
   return people.filter(p=>Math.round(p.x)===tile.i&&Math.round(p.y)===tile.j);
 }
+
+
+export const MAP_ARIA_INSTRUCTIONS='点击居民、房屋、建筑或地块查看详情；键盘：方向键移动光标，回车或空格选中光标处，Esc 关闭信息卡';
+
+export function mapAriaLabel(worldName,status=''){
+  const name=typeof worldName==='string'&&worldName.trim()?worldName.trim():'溪谷群岛';
+  return [`${name}地图`,MAP_ARIA_INSTRUCTIONS,status].filter(Boolean).join('。');
+}

@@ -7,7 +7,7 @@ import { pickUi } from './ui/random.js';
 import { createUiDialog } from './ui/dialog.js';
 import { clampResidentHappiness, monotonicDay, normalizeWorldName } from './simulation/invariants.js';
 import { describeTile, describeVillage } from './ui/inspect.js';
-import { moveKeyboardTile, peopleOnKeyboardTile } from './ui/map-keyboard.js';
+import { mapAriaLabel, moveKeyboardTile, peopleOnKeyboardTile } from './ui/map-keyboard.js';
 import { bindContext, hx, mix, shade, rgba, poly, rrect, hash, drawSea, buildTerrain, drawWaterFx, drawTree, drawHouse, drawMountain, drawMine, drawFountain, drawBuilding, drawPerson, drawSparkle, drawGlows, drawWeather, drawVignette } from './ui/scene.js';
 import { newState, normalizeState, setState, configureState } from './simulation/state.js';
 import { configureEconomy, pushHist, tick } from './simulation/economy.js';
@@ -18,6 +18,7 @@ import { FRONTIER, canMine, canDepart, frontierStage, isSettled, isPioneering, i
 import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, researchStall, techNeeds, startResearch, cancelResearch } from './simulation/tech.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
 import { ONBOARDING_STEP_GUIDE, ONBOARDING_STEP_DONE, onboardingComplete, setOnboardingStep } from './state-contract.js';
+import { withTemporaryPause } from './ui/onboarding.js';
 
 const $=id=>document.getElementById(id);
 const Storage=createHejingStorage(window.localStorage);
@@ -667,7 +668,6 @@ $('fWatch').addEventListener('click',()=>{
 
 /* ---------------- 地图绘制 ---------------- */
 const cv=$('map'),ctx=cv.getContext('2d');bindContext(ctx);
-const MAP_ARIA_BASE=cv.getAttribute('aria-label')||'溪谷群岛地图';
 const view={w:0,h:0,dpr:1,zoom:1,panX:0,panY:0,tw:30,ox:0,oy:0};
 let tool='look',buildSel='granary',hoverPt=null,moveSrc=null,dragGhost=null,kbTile=null;
 let theme={label:'#fff',ink:'#263022',line:'#dfe2d2',accent:'#4f7136',accentInk:'#fff',dark:false};
@@ -957,6 +957,7 @@ function updateUI(){
   clampResidentHappiness(S);
   const se=seasonIdx();
   setT('worldName',S.worldName||'溪谷群岛');
+  syncMapAriaLabel();
   setT('date',`第 ${Math.floor(S.day/YEAR)+1} 年，${SEASONS[se]}，第 ${S.day%SEASON+1} 日`);
   const w=[`${SEASONS[se]}季`];let warn=false;
   if(S.drought>0){w.push(`干旱还剩 ${S.drought} 日`);warn=true;}
@@ -1107,11 +1108,14 @@ function keyboardTileStatus(t){
   const occupants=people.length?'，附近居民 '+people.slice(0,3).map(p=>p.name).join('、')+(people.length>3?'等 '+people.length+' 人':''):'';
   return '键盘光标：'+where+'，第 '+(t.i+1)+' 行第 '+(t.j+1)+' 列'+occupants;
 }
+function syncMapAriaLabel(status=kbTile?keyboardTileStatus(kbTile):''){
+  cv.setAttribute('aria-label',mapAriaLabel(S.worldName,status));
+}
 function syncKeyboardTile(){
   if(!kbTile)return;
   const [x,y]=iso(kbTile.i,kbTile.j);hoverPt={x,y};
   const status=keyboardTileStatus(kbTile);
-  cv.setAttribute('aria-label',MAP_ARIA_BASE+'。'+status);
+  syncMapAriaLabel(status);
   $('mapKbStatus').textContent=status;
 }
 cv.addEventListener('focus',()=>{
@@ -1337,7 +1341,7 @@ let onboardingRun=null;
 function needsOnboarding(){return Storage.getActiveInfo().kind==='slot'&&!onboardingComplete(S);}
 function resumeOnboardingIfNeeded(){
   if(!needsOnboarding()||onboardingRun)return onboardingRun;
-  onboardingRun=firstVisit().catch(err=>{console.error('Onboarding failed',err);toast('新手引导未能完成，请刷新后重试',true);}).finally(()=>{onboardingRun=null;});
+  onboardingRun=firstVisit().catch(err=>{console.error('Onboarding failed',err);toast('新手引导未能完成；游戏已恢复，可稍后刷新重试',true);}).finally(()=>{onboardingRun=null;});
   return onboardingRun;
 }
 function init(){
@@ -1348,17 +1352,22 @@ function init(){
   if(boot.migrationError)setTimeout(()=>toast(boot.migrationError,true),60);
 }
 async function firstVisit(){
-  S.paused=true;updateUI();
-  if(S.onboarding.step<ONBOARDING_STEP_GUIDE){
-    const name=await UiDialog.prompt('这里不是一张等待你征服的地图。三十个人会自己生活、结交、成家、衰老；你可以观察，也可以偶尔轻轻拨动他们的命运。\n\n先给这个世界起个名字。',{title:'欢迎来到溪谷',defaultValue:S.worldName||'溪谷 1',confirmLabel:'继续'});
-    if(name!==null){const next=normalizeWorldName(name,'溪谷 1');S.worldName=next;const info=Storage.getActiveInfo();if(info.id)Storage.renameSlot(info.id,next);}
-    setOnboardingStep(S,ONBOARDING_STEP_GUIDE);saveNow();
+  try{
+    await withTemporaryPause(S,async()=>{
+      updateUI();
+      if(S.onboarding.step<ONBOARDING_STEP_GUIDE){
+        const name=await UiDialog.prompt('这里不是一张等待你征服的地图。三十个人会自己生活、结交、成家、衰老；你可以观察，也可以偶尔轻轻拨动他们的命运。\n\n先给这个世界起个名字。',{title:'欢迎来到溪谷',defaultValue:S.worldName||'溪谷 1',confirmLabel:'继续'});
+        if(name!==null){const next=normalizeWorldName(name,'溪谷 1');S.worldName=next;const info=Storage.getActiveInfo();if(info.id)Storage.renameSlot(info.id,next);}
+        setOnboardingStep(S,ONBOARDING_STEP_GUIDE);saveNow();
+      }
+      if(S.onboarding.step<ONBOARDING_STEP_DONE){
+        await UiDialog.alert('先让时间流动，看看粮食、财富和人与人的关系怎样变化。\n\n想干预时，可以用左侧的自然事件，或在右侧花“恩惠”帮助某个人；重要选择都会留下编年史和一生之书。\n\n没有唯一的胜利方式。观察这个小社会会走向哪里，就是自由模式的核心。',{title:'先观察，再轻轻干预',confirmLabel:'让时间开始流动'});
+        setOnboardingStep(S,ONBOARDING_STEP_DONE);saveNow();
+      }
+    });
+  }finally{
+    dirty=true;updateUI();
   }
-  if(S.onboarding.step<ONBOARDING_STEP_DONE){
-    await UiDialog.alert('先让时间流动，看看粮食、财富和人与人的关系怎样变化。\n\n想干预时，可以用左侧的自然事件，或在右侧花“恩惠”帮助某个人；重要选择都会留下编年史和一生之书。\n\n没有唯一的胜利方式。观察这个小社会会走向哪里，就是自由模式的核心。',{title:'先观察，再轻轻干预',confirmLabel:'让时间开始流动'});
-    setOnboardingStep(S,ONBOARDING_STEP_DONE);saveNow();
-  }
-  S.paused=false;dirty=true;updateUI();saveNow();
 }
 buildStats();buildSeeds();readTheme();
 init();
