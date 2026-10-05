@@ -5,6 +5,8 @@ import { random, rand, randi, pick, clamp } from './random.js';
 import { getState, markStateDirty } from './state.js';
 import { canDepart, canMine } from './frontier.js';
 import { defaultSurnameForNewPerson, knownPersonSurname, migratedFamilyName, surnameFromName } from './names.js';
+import { MAX_CHRON_ENTRIES, MAX_PERSON_HISTORY_ENTRIES, normalizeChronicleKind } from '../state-contract.js';
+import { adjustResidentHappiness, normalizeResidentHappiness } from './invariants.js';
 
 export const ta=p=>p.gender==='女'?'她':'他';
 export const isWorker=p=>p.job!=='child'&&p.job!=='elder';
@@ -14,9 +16,13 @@ export const need=p=>p.job==='child'?0.07:0.11;
 
 
 export function log(p,t){
-  const S = getState();p.hist.push({d:S.day,t});if(p.hist.length>60)p.hist.splice(0,p.hist.length-60);}
+  const S = getState();p.hist.push({d:S.day,t});if(p.hist.length>MAX_PERSON_HISTORY_ENTRIES)p.hist.splice(0,p.hist.length-MAX_PERSON_HISTORY_ENTRIES);}
 export function chron(t,k){
-  const S = getState();S.chron.push({d:S.day,t,k:k||'info'});if(S.chron.length>120)S.chron.shift();S.chronVer++;markStateDirty();}
+  const S = getState();
+  S.chron.push({d:S.day,t:typeof t==='string'?t:String(t??''),k:normalizeChronicleKind(k)});
+  if(S.chron.length>MAX_CHRON_ENTRIES)S.chron.splice(0,S.chron.length-MAX_CHRON_ENTRIES);
+  S.chronVer++;markStateDirty();
+}
 export function friendCount(p){let n=0;for(const k in p.rel)if(p.rel[k]>=40)n++;return n;}
 export function living(id){
   const S = getState();for(const p of S.people)if(p.id===id)return p;return null;}
@@ -61,7 +67,7 @@ export function makePerson(o){
   const name=o.name||uniqueName(inheritedSurname,id);
   const surname=inheritedSurname||surnameFromName(name)||defaultSurnameForNewPerson(id);
   const p={id,name,surname,gender:o.gender||(random()<0.5?'男':'女'),age:o.age,village:o.village,job:'child',
-    wealth:o.wealth!=null?o.wealth:0,happiness:o.happiness!=null?o.happiness:rand(50,68),health:100,skill:o.skill!=null?o.skill:rand(10,40),
+    wealth:o.wealth!=null?o.wealth:0,happiness:normalizeResidentHappiness(o.happiness!=null?o.happiness:rand(50,68)),health:100,skill:o.skill!=null?o.skill:rand(10,40),
     traits:[],rel:{},met:{},partner:null,parents:o.parents||[],children:[],hist:[],fed:1,hungerDays:0,sadDays:0,lastIncome:0,
     status:'alive',home:0,x:0,y:0,tx:0,ty:0,skin:pick(SKIN),hair:pick(HAIR),lastBirth:-999,plagueTag:0};
   const nt=random()<0.55?2:1;
@@ -134,8 +140,8 @@ export function remove(p,status,cause){
   else{S.left++;S.lastLeft=p.name;notify(p,'对生活失去了指望，离开了溪谷');log(p,'对生活失去了指望，离开了溪谷');chron(`${p.name} 离开了溪谷，去远方寻找生计。`,'leave');}
   for(const q of S.people){
     const r=q.rel[p.id];if(r==null)continue;delete q.rel[p.id];
-    if(q.partner===p.id){q.partner=null;q.happiness-=18;const t=status==='dead'?`失去了伴侣${p.name}`:`伴侣${p.name}离开了溪谷`;log(q,t);notify(q,t);}
-    else if(r>=70&&status==='dead'){q.happiness-=8;log(q,`送别了挚友${p.name}`);}
+    if(q.partner===p.id){q.partner=null;adjustResidentHappiness(q,-18);const t=status==='dead'?`失去了伴侣${p.name}`:`伴侣${p.name}离开了溪谷`;log(q,t);notify(q,t);}
+    else if(r>=70&&status==='dead'){adjustResidentHappiness(q,-8);log(q,`送别了挚友${p.name}`);}
   }
   S.dead.push(p);if(S.dead.length>150)S.dead.shift();
   return true;

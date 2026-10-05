@@ -22,6 +22,7 @@
       <div class="seg" id="speed"><button data-s="1" class="on">1×</button><button data-s="3">3×</button><button data-s="10">10×</button></div>
       <button class="btn" id="saveBtn">存档</button>
       <button class="btn" id="chBtn">挑战</button>
+      <button class="btn pending-btn" id="pendingBtn" hidden>待决事项</button>
       <button class="btn" id="reset">重来</button>
     </div>
   </header>
@@ -74,7 +75,7 @@
 
     <section class="card panel mapcard">
       <div class="maphead">
-        <div><div class="ptitle">溪谷群岛</div><p class="pdesc">三个聚落，一条溪流，一座山。</p></div>
+        <div><div class="ptitle" id="worldName">溪谷群岛</div><p class="pdesc">三个聚落，一条溪流，一座山。</p></div>
         <span class="badge" id="weather"></span>
       </div>
       <div class="toolbar">

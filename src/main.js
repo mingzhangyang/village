@@ -4,8 +4,11 @@ import { YEAR, SEASON, SEASONS, ageY, seasonIndex, dateLabel } from './simulatio
 import { JOBS, POLICIES } from './simulation/constants.js';
 import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
 import { pickUi } from './ui/random.js';
+import { createUiDialog } from './ui/dialog.js';
+import { adjustResidentHappiness, monotonicDay, normalizeWorldName } from './simulation/invariants.js';
 import { describeTile, describeVillage } from './ui/inspect.js';
-import { moveKeyboardTile, peopleOnKeyboardTile } from './ui/map-keyboard.js';
+import { mapAriaLabel, moveKeyboardTile, peopleOnKeyboardTile } from './ui/map-keyboard.js';
+import { renderChronicleList } from './ui/chronicle.js';
 import { bindContext, hx, mix, shade, rgba, poly, rrect, hash, drawSea, buildTerrain, drawWaterFx, drawTree, drawHouse, drawMountain, drawMine, drawFountain, drawBuilding, drawPerson, drawSparkle, drawGlows, drawWeather, drawVignette } from './ui/scene.js';
 import { newState, normalizeState, setState, configureState } from './simulation/state.js';
 import { configureEconomy, pushHist, tick } from './simulation/economy.js';
@@ -15,11 +18,14 @@ import { BUILDS, buildingStats, statOf, totalBonus, granaryCapacity, investedCos
 import { FRONTIER, canMine, canDepart, frontierStage, isSettled, isPioneering, isleVisible, activeVillages, islanders, islandAdults, islandMorale, expeditionChecks, expeditionReady, isVolunteer, pickSettlers, launchExpedition, returnHome, retryLeft, hardshipFor } from './simulation/frontier.js';
 import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, researchStall, techNeeds, startResearch, cancelResearch } from './simulation/tech.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
+import { ONBOARDING_STEP_GUIDE, ONBOARDING_STEP_DONE, onboardingComplete, setOnboardingStep } from './state-contract.js';
+import { withTemporaryPause } from './ui/onboarding.js';
 
 const $=id=>document.getElementById(id);
 const Storage=createHejingStorage(window.localStorage);
+const UiDialog=createUiDialog();
 const WINS='hejing-wins-v1',LEGACY_WINS='hejing-wins';
-let S;
+let S,observedDay=0;
 const seasonIdx=()=>seasonIndex(S.day);
 const CHALLENGES=createChallenges({getState:()=>S,YEAR,SEASON,clamp,rand,chron});
 function saveNow(){
@@ -45,11 +51,11 @@ const cdState=k=>cdLeft(k)?`${cdLeft(k)}日后可再用`:'';
 const SEEDS=[
   {k:'drought',n:'降下干旱',d:'三十日少雨，庄稼减产七成',
     st:()=>S.drought>0?`进行中 ${S.drought}日`:'',dis:()=>S.drought>0,on:()=>S.drought>0,
-    go(){S.drought=30;chron('旱灾降临溪谷，田里的禾苗开始发黄。','event');}},
+    go(){S.drought=30;chron('旱灾降临溪谷，田里的禾苗开始发黄。','choice');}},
   {k:'mine',n:'发现矿脉',d:'山脚露出矿石，带来新的财富',
     st:()=>S.mine?'已发现':'',dis:()=>S.mine,on:()=>false,
     go(){
-      S.mine=true;chron('有人在山脚下发现了一条矿脉。','event');
+      S.mine=true;chron('有人在山脚下发现了一条矿脉。','choice');
       const ws=S.people.filter(p=>isWorker(p)&&canMine(S,p)).sort((a,b)=>a.wealth-b.wealth);let n=0;
       for(const p of ws){if(n>=Math.max(2,Math.ceil(ws.length*0.25)))break;if(n<2||random()<0.35){p.job='miner';p.skill*=0.5;log(p,'听说发现了矿脉，扛起镐头当了矿工');n++;}}
     }},
@@ -63,20 +69,20 @@ const SEEDS=[
         log(p,`从远方迁来，在${MAP.V[v].n}落脚`);ps.push(p);
       }
       for(let k=0;k+1<ps.length;k+=2)setRel(ps[k],ps[k+1],rand(20,45));
-      chron(`${n} 位移民来到${MAP.V[v].n}，带着行囊和陌生的口音。`,'event');computeHouses();
+      chron(`${n} 位移民来到${MAP.V[v].n}，带着行囊和陌生的口音。`,'choice');computeHouses();
     }},
   {k:'festival',more:true,n:'举办丰收节',d:'公库出资，人们欢聚几日',cd:30,
     st:()=>S.festival>0?'正在欢庆':cdState('festival'),dis:()=>cdLeft('festival')>0,on:()=>S.festival>0,
-    go(){const c=Math.min(S.treasury,40);S.treasury-=c;S.festival=6;S.people.forEach(p=>p.happiness=Math.min(100,p.happiness+6));chron(`溪谷办起了丰收节，公库出资 ${Math.round(c)} 金，人们彻夜欢歌。`,'event');}},
+    go(){const c=Math.min(S.treasury,40);S.treasury-=c;S.festival=6;S.people.forEach(p=>adjustResidentHappiness(p,6));chron(`溪谷办起了丰收节，公库出资 ${Math.round(c)} 金，人们彻夜欢歌。`,'choice');}},
   {k:'plague',more:true,n:'疫病流行',d:'十五日内，人人都可能染病',cd:30,
     st:()=>S.plague>0?`进行中 ${S.plague}日`:cdState('plague'),dis:()=>S.plague>0||cdLeft('plague')>0,on:()=>S.plague>0,
-    go(){S.plague=15;S.plagueId++;chron('一场疫病在溪谷蔓延开来。','event');}},
+    go(){S.plague=15;S.plagueId++;chron('一场疫病在溪谷蔓延开来。','choice');}},
   {k:'caravan',more:true,n:'商队到访',d:'带来六十担粮食，商人生意兴隆',cd:25,
     st:()=>S.caravan>0?`停留中 ${S.caravan}日`:cdState('caravan'),dis:()=>cdLeft('caravan')>0,on:()=>S.caravan>0,
-    go(){S.food+=60;const c=Math.min(S.treasury,45);S.treasury-=c;S.caravan=10;chron(`一支商队来到溪湾，公库花 ${Math.round(c)} 金换来六十担粮食。`,'event');}},
+    go(){S.food+=60;const c=Math.min(S.treasury,45);S.treasury-=c;S.caravan=10;chron(`一支商队来到溪湾，公库花 ${Math.round(c)} 金换来六十担粮食。`,'choice');}},
   {k:'canal',more:true,n:'修建水渠',d:'花公库 150 金，农田从此增产',
     st:()=>S.canal?'已建成':S.treasury<150?`公库 ${Math.round(S.treasury)}/150`:'',dis:()=>S.canal||S.treasury<150,on:()=>false,
-    go(){S.treasury-=150;S.canal=true;chron('人们引溪水入田，水渠修成了，往后的收成会更好。','event');}}
+    go(){S.treasury-=150;S.canal=true;chron('人们引溪水入田，水渠修成了，往后的收成会更好。','choice');}}
 ];
 function trigger(s){if(s.dis())return;s.go();if(s.cd)S.cd[s.k]=S.day+s.cd;dirty=true;updateUI();}
 function buildSeeds(){
@@ -94,7 +100,7 @@ function buildSeeds(){
 const nm=id=>{const p=byId(id);return p?p.name:'某人';};
 const VN=v=>MAP.V[v].n;
 const adults=()=>S.people.filter(p=>p.job!=='child');
-function moodVillage(v,a){for(const p of S.people)if(p.village===v)p.happiness=clamp(p.happiness+a,0,100);}
+function moodVillage(v,a){for(const p of S.people)if(p.village===v)adjustResidentHappiness(p,a);}
 const DILEMMAS={
   trade:{
     when:()=>S.treasury>=30?{}:null,
@@ -104,7 +110,7 @@ const DILEMMAS={
       {t:'答应交易',h:'粮食 +50，公库 −60',ok:()=>S.treasury>=60,go(){S.treasury-=60;S.food+=50;return '商队卸下粮袋，粮仓里多了 50 担粮食。';}},
       {t:'讨价还价',h:'也许能少花点，也许会谈崩',go(){
         if(random()<0.55){const c=Math.min(35,S.treasury);S.treasury-=c;S.food+=50;return `商队首领笑着让了步，只收了 ${Math.round(c)} 金。`;}
-        for(const p of S.people)if(p.job==='merchant')p.happiness=clamp(p.happiness-5,0,100);
+        for(const p of S.people)if(p.job==='merchant')adjustResidentHappiness(p,-5);
         return '商队觉得受了冒犯，转身离开了。溪湾的商人们有些失落。';}},
       {t:'婉拒',h:'一切照旧',go:()=>'商队收起货物，继续上路了。'}
     ]
@@ -125,11 +131,11 @@ const DILEMMAS={
     text:d=>`粮食越来越紧，只够吃 ${Math.floor(foodDays())} 天了。有人提议：向最富的三户，${d.ids.map(nm).join('、')}，征收一半家财，拿去岛外买粮。`,
     opts:d=>[
       {t:'征收',h:'能买回不少粮食，但三户会心生怨恨',go(){
-        let sum=0;for(const id of d.ids){const p=living(id);if(!p)continue;const x=Math.max(0,p.wealth)*0.5;p.wealth-=x;sum+=x;p.happiness=clamp(p.happiness-20,0,100);log(p,`一半家财（${Math.round(x)} 金）被征去买粮`);}
+        let sum=0;for(const id of d.ids){const p=living(id);if(!p)continue;const x=Math.max(0,p.wealth)*0.5;p.wealth-=x;sum+=x;adjustResidentHappiness(p,-20);log(p,`一半家财（${Math.round(x)} 金）被征去买粮`);}
         const f=Math.round(sum/2.5);S.food+=f;return `征得 ${Math.round(sum)} 金，从岛外买回 ${f} 担粮食。`;}},
       {t:'登门劝捐',h:'看他们愿不愿意，捐多少算多少',go(){
         let sum=0;const names=[];
-        for(const id of d.ids){const p=living(id);if(!p)continue;if(random()<(p.happiness>55||has(p,'好客')?0.75:0.3)){const x=Math.max(0,p.wealth)*0.25;p.wealth-=x;sum+=x;p.happiness=clamp(p.happiness+6,0,100);names.push(p.name);log(p,`主动捐出 ${Math.round(x)} 金买粮`);}}
+        for(const id of d.ids){const p=living(id);if(!p)continue;if(random()<(p.happiness>55||has(p,'好客')?0.75:0.3)){const x=Math.max(0,p.wealth)*0.25;p.wealth-=x;sum+=x;adjustResidentHappiness(p,6);names.push(p.name);log(p,`主动捐出 ${Math.round(x)} 金买粮`);}}
         if(!sum)return '三户都推说手头紧，一分也没捐。';
         const f=Math.round(sum/2.5);S.food+=f;S.cohesion=clamp(S.cohesion+3,0,100);return `${names.join('、')}捐了 ${Math.round(sum)} 金，买回 ${f} 担粮食。`;}},
       {t:'不干预',h:'各家自己想办法',go:()=>'富户们照旧过日子，穷人只能勒紧裤腰带。'}
@@ -149,7 +155,7 @@ const DILEMMAS={
         for(const p of fam){p.x=e.i;p.y=e.j;const h=homeTile(p);p.tx=h.i;p.ty=h.j;log(p,`一家人逃荒到溪谷，在${VN(d.v)}被收留`);}
         computeHouses();return `${fa.name}一家在${VN(d.v)}搭起了新家。`;}},
       {t:'送些粮食，请他们离开',h:'粮食 −20',go(){S.food=Math.max(0,S.food-20);return '他们带着粮食，划船去了别处。';}},
-      {t:'拒绝',h:'有人会觉得溪谷变冷漠了',go(){S.cohesion=clamp(S.cohesion-5,0,100);for(const p of S.people)if(has(p,'好客'))p.happiness=clamp(p.happiness-6,0,100);return '破船又漂走了。好几个人在岸边站了很久。';}}
+      {t:'拒绝',h:'有人会觉得溪谷变冷漠了',go(){S.cohesion=clamp(S.cohesion-5,0,100);for(const p of S.people)if(has(p,'好客'))adjustResidentHappiness(p,-6);return '破船又漂走了。好几个人在岸边站了很久。';}}
     ]
   },
   dispute:{
@@ -161,7 +167,7 @@ const DILEMMAS={
     text:d=>`${nm(d.a)}和${nm(d.b)}为一块地的归属吵得不可开交，两人都来找你评理。`,
     opts:d=>{
       const judge=(w,l)=>()=>{const W=living(w),L=living(l);if(!W||!L)return '还没等你开口，两人已经不争了。';
-        W.happiness=clamp(W.happiness+10,0,100);W.wealth+=8;L.happiness=clamp(L.happiness-12,0,100);L.wealth-=Math.min(8,Math.max(0,L.wealth));
+        adjustResidentHappiness(W,10);W.wealth+=8;adjustResidentHappiness(L,-12);L.wealth-=Math.min(8,Math.max(0,L.wealth));
         setRel(W,L,Math.min(W.rel[L.id]||0,-40));log(W,`和${L.name}争地，赢了`);log(L,`和${W.name}争地输了，心里不服`);
         return `地判给了${W.name}。${L.name}很不服气，两人从此见面不说话。`;};
       return [
@@ -180,7 +186,7 @@ const DILEMMAS={
     text:d=>`${nm(d.p)}提议用公库 80 金办一间学堂，让孩子们从小学手艺。溪谷现在有 ${d.kids} 个孩子。`,
     opts:d=>[
       {t:'办学堂',h:'公库 −80，孩子们长大后手艺更好',ok:()=>S.treasury>=80,go(){
-        S.treasury-=80;S.school=true;const p=living(d.p);if(p){log(p,'牵头办起了学堂');p.happiness=clamp(p.happiness+10,0,100);}
+        S.treasury-=80;S.school=true;const p=living(d.p);if(p){log(p,'牵头办起了学堂');adjustResidentHappiness(p,10);}
         for(const c of S.people)if(c.job==='child')log(c,'进了学堂读书');return '学堂开张了，孩子们的读书声从早响到晚。';}},
       {t:'暂时不办',h:'把钱留着应急',go:()=>`${nm(d.p)}叹了口气，说那就再等等。`}
     ]
@@ -193,7 +199,7 @@ const DILEMMAS={
       {t:'停工整修十日',h:'矿工十日没有收入',go(){S.mineClosed=10;return '矿工们放下镐头，开始加固矿洞。';}},
       {t:'继续开采',h:'不耽误挣钱，但有风险',go(){
         const ms=S.people.filter(p=>p.job==='miner'&&canMine(S,p));
-        if(ms.length&&random()<0.45){const m=pick(ms);m.health-=rand(50,85);log(m,'在矿洞塌方中受了重伤');for(const q of ms)q.happiness=clamp(q.happiness-10,0,100);return `矿洞塌了一角，${m.name}被压在石头下，受了重伤。`;}
+        if(ms.length&&random()<0.45){const m=pick(ms);m.health-=rand(50,85);log(m,'在矿洞塌方中受了重伤');for(const q of ms)adjustResidentHappiness(q,-10);return `矿洞塌了一角，${m.name}被压在石头下，受了重伤。`;}
         return '裂缝没有再扩大，大家松了一口气。';}}
     ]
   },
@@ -214,9 +220,9 @@ const DILEMMAS={
     text:d=>{const p=byId(d.p);return `${p.name}（${ageY(p)}岁，${JOBS[p.job].n}）说岛上的日子一眼望得到头，想去外面闯一闯。`;},
     opts:d=>{const p=byId(d.p),t=p?ta(p):'他';return [
       {t:'挽留：公库给 20 金安家',h:`${t}会留下，心里也更踏实`,ok:()=>S.treasury>=20,go(){
-        S.treasury-=20;const q=living(d.p);if(!q)return '';q.wealth+=20;q.happiness=clamp(q.happiness+15,0,100);log(q,'被大家挽留，决定留在溪谷');return `${q.name}收下了安家钱，决定留下来。`;}},
+        S.treasury-=20;const q=living(d.p);if(!q)return '';q.wealth+=20;adjustResidentHappiness(q,15);log(q,'被大家挽留，决定留在溪谷');return `${q.name}收下了安家钱，决定留下来。`;}},
       {t:'祝一路顺风',h:`${t}会离开溪谷`,go(){const q=living(d.p);if(!q)return '';if(!remove(q,'left','wander'))return '开拓期间南屿居民不能通过普通出走离岛。';return `${q.name}背上行囊，坐船离开了溪谷。`;}},
-      {t:`让${t}再想想`,h:'也许过阵子就好了，也许不会',go(){const q=living(d.p);if(q){q.happiness=clamp(q.happiness-3,0,100);log(q,'想出去闯荡，被劝再想想');}return `${t}点点头，没再说什么。`;}}
+      {t:`让${t}再想想`,h:'也许过阵子就好了，也许不会',go(){const q=living(d.p);if(q){adjustResidentHappiness(q,-3);log(q,'想出去闯荡，被劝再想想');}return `${t}点点头，没再说什么。`;}}
     ];}
   },
   isle:{
@@ -226,11 +232,11 @@ const DILEMMAS={
     opts:()=>[
       {t:'派船送补给',h:'公库 −40、粮食 −40；开拓者健康 +20、幸福 +12',ok:()=>S.treasury>=40&&S.food>=40,go(){
         S.treasury-=40;S.food-=40;
-        for(const p of islanders(S)){p.health=Math.min(100,p.health+20);p.happiness=clamp(p.happiness+12,0,100);log(p,'收到了故乡送来的补给');}
+        for(const p of islanders(S)){p.health=Math.min(100,p.health+20);adjustResidentHappiness(p,12);log(p,'收到了故乡送来的补给');}
         return '补给船靠了岸，开拓者们捧着家乡的米和信，好几个人红了眼眶。';}},
       {t:'让他们咬牙坚持',h:'开拓者幸福 −6，但患难之中彼此更亲近',go(){
         const ps=islanders(S);
-        for(const p of ps){p.happiness=clamp(p.happiness-6,0,100);for(const q of ps)if(q.id>p.id)changeRel(p,q,12);}
+        for(const p of ps){adjustResidentHappiness(p,-6);for(const q of ps)if(q.id>p.id)changeRel(p,q,12);}
         return '开拓者们挤在一个窝棚里熬过了难关，彼此成了过命的交情。';}},
       {t:'接回病弱的人',h:'开荒期唯一能离岛的机会：健康低于 50 的人回到故乡，岛上人手会变少',go(){
         const back=islanders(S).filter(p=>p.health>0&&p.health<50);
@@ -241,22 +247,25 @@ const DILEMMAS={
     ]
   }
 };
+let dilemmaDeferred=false;
 function maybeDilemma(){
   if(!S.dilemmasOn||S.pending||S.day<S.nextDilemma||!S.people.length)return;
   const c=[];
   for(const k in DILEMMAS){if(k===S.lastDil)continue;const d=DILEMMAS[k].when();if(d)c.push([k,d,k==='isle'?4:k==='levy'?3:k==='sick'?2:1]);}
   if(!c.length){S.nextDilemma=S.day+5;return;}
   let x=random()*c.reduce((t,e)=>t+e[2],0);
-  for(const [k,d,w] of c){if((x-=w)<0){S.pending={k,d,res:null};S.lastDil=k;S.nextDilemma=S.day+randi(28,45);dirty=true;return;}}
+  for(const [k,d,w] of c){if((x-=w)<0){S.pending={k,d,res:null};S.lastDil=k;S.nextDilemma=S.day+randi(28,45);dilemmaDeferred=false;dirty=true;return;}}
 }
 let dlgKey='',dlgReturnFocus=null;
 function renderDilemma(){
   const box=$('dlg');
   if(!S.pending){
-    const wasOpen=!box.hidden;box.hidden=true;dlgKey='';
+    const wasOpen=!box.hidden;box.hidden=true;$('pendingBtn').hidden=true;dlgKey='';dilemmaDeferred=false;
     if(wasOpen&&dlgReturnFocus&&typeof dlgReturnFocus.focus==='function')dlgReturnFocus.focus({preventScroll:true});
     dlgReturnFocus=null;return;
   }
+  if(dilemmaDeferred){box.hidden=true;$('pendingBtn').hidden=false;return;}
+  $('pendingBtn').hidden=true;
   const {k,d,res}=S.pending,D=DILEMMAS[k];
   if(!D){S.pending=null;box.hidden=true;return;}
   const key=k+'|'+(res==null?0:1)+'|'+JSON.stringify(d);
@@ -265,7 +274,7 @@ function renderDilemma(){
   if(res==null){
     $('dlgK').textContent='溪谷需要你做决定';
     $('dlgX').textContent=D.text(d);
-    $('dlgO').innerHTML=D.opts(d).map((o,i)=>{const ok=!o.ok||o.ok();return `<button class="opt" data-i="${i}"${ok?'':' disabled'}><b>${o.t}</b><span>${ok?o.h:'公库的钱不够'}</span></button>`;}).join('');
+    $('dlgO').innerHTML=D.opts(d).map((o,i)=>{const ok=!o.ok||o.ok();return `<button class="opt" data-i="${i}"${ok?'':' disabled'}><b>${o.t}</b><span>${ok?o.h:'公库的钱不够'}</span></button>`;}).join('')+'<button class="btn dlg-later" id="dlgLater">稍后处理</button>';
   }else{
     $('dlgK').textContent='你的决定';
     $('dlgX').textContent=res;
@@ -277,18 +286,20 @@ function renderDilemma(){
 }
 $('dlgO').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||!S.pending)return;
-  if(b.id==='dlgDone'){S.pending=null;dirty=true;updateUI();return;}
+  if(b.id==='dlgLater'){dilemmaDeferred=true;dlgKey='';$('dlg').hidden=true;$('pendingBtn').hidden=false;dlgReturnFocus=null;$('pendingBtn').focus({preventScroll:true});dirty=true;return;}
+  if(b.id==='dlgDone'){S.pending=null;dilemmaDeferred=false;dirty=true;updateUI();return;}
   const o=DILEMMAS[S.pending.k].opts(S.pending.d)[+b.dataset.i];if(!o||(o.ok&&!o.ok()))return;
   const r=o.go()||'就这么定了。';S.pending.res=r;
   chron(`你的决定：${o.t}。${r}`,'choice');dirty=true;updateUI();
 });
+$('pendingBtn').addEventListener('click',()=>{$('play').focus({preventScroll:true});dilemmaDeferred=false;dirty=true;renderDilemma();});
 
 /* ---------------- 伸出援手 ---------------- */
 const HELP={
-  gift:{n:'送了一笔钱',go(p){p.wealth+=30;p.happiness=clamp(p.happiness+6,0,100);return '收到一笔意外之财（30 金）';}},
+  gift:{n:'送了一笔钱',go(p){p.wealth+=30;adjustResidentHappiness(p,6);return '收到一笔意外之财（30 金）';}},
   teach:{n:'传授了手艺',go(p){p.skill=Math.min(100,p.skill+25);return p.job==='child'?'得到先生单独指点，学得飞快':'得到高人指点，手艺大进';}},
   heal:{n:'请郎中调养',go(p){p.health=Math.min(100,p.health+40);p.hungerDays=0;return `有人请来郎中为${ta(p)}调养身体`;}},
-  visit:{n:'登门陪伴',go(p){p.happiness=clamp(p.happiness+20,0,100);p.sadDays=0;return `有人登门，陪${ta(p)}说了一下午的话`;}}
+  visit:{n:'登门陪伴',go(p){adjustResidentHappiness(p,20);p.sadDays=0;return `有人登门，陪${ta(p)}说了一下午的话`;}}
 };
 function spendFavor(p,text,short){
   S.favor--;p.touched=(p.touched||0)+1;log(p,'✦ '+text);if(!S.watch.includes(p.id))S.watch.push(p.id);
@@ -382,7 +393,7 @@ function relocate(p,v){
   for(const id of p.children){const c=living(id);if(c&&c.job==='child'&&c.village===from&&!fam.includes(c))fam.push(c);}
   if(p.job==='child'){for(const id of p.parents){const q=living(id);if(q&&q.village===from&&!fam.includes(q))fam.push(q);}}
   const home=freeSlot(v);
-  for(const q of fam){q.village=v;q.home=home;q.happiness=clamp(q.happiness-4,0,100);log(q,`从${VN(from)}搬到了${VN(v)}`);assignTarget(q);const h=homeTile(q);q.tx=h.i+rand(-0.3,0.3);q.ty=h.j+rand(-0.3,0.3);}
+  for(const q of fam){q.village=v;q.home=home;adjustResidentHappiness(q,-4);log(q,`从${VN(from)}搬到了${VN(v)}`);assignTarget(q);const h=homeTile(q);q.tx=h.i+rand(-0.3,0.3);q.ty=h.j+rand(-0.3,0.3);}
   computeHouses();
   const who=fam.length>1?`${p.name}一家 ${fam.length} 口`:p.name;
   chron(`${who}从${VN(from)}搬到了${VN(v)}。`,'choice');toast(`${who}搬去了${VN(v)}`);dirty=true;updateUI();
@@ -411,11 +422,11 @@ function checkChallenge(){
   if(r.st==='win'){try{const w=wins();w[c.id]=1;localStorage.setItem(WINS,JSON.stringify(w));}catch{/* Win-history storage is optional. */}}
   dirty=true;
 }
-function startChallenge(id){
+async function startChallenge(id){
   const C=CHALLENGES[id];if(!C)return;
-  if(!window.confirm(`开始“${C.n}”吗？当前自由世界会先保存，挑战使用独立存档，结束后可以原样返回。`))return;
+  if(!await UiDialog.confirm(`当前自由世界会先保存，挑战使用独立存档，结束后可以原样返回。`,{title:`开始“${C.n}”吗？`,confirmLabel:'开始挑战'}))return;
   saveNow();
-  installState(null,true);
+  installState(null,true,C.n);setOnboardingStep(S,ONBOARDING_STEP_DONE);
   S.ch={id,start:S.day,hd0:S.hungerDeaths,left0:S.left,hold:0,result:null,txt:'',pct:0};
   if(C.setup)C.setup();
   chron(`挑战开始：${C.n}。${C.d}`,'event');
@@ -427,20 +438,20 @@ function returnToFreeWorld(){
   const old=S.ch&&CHALLENGES[S.ch.id];
   const session=Storage.returnToOrigin();
   if(session&&session.state){
-    installState(session.state,false);closeModal();toast(old?`已结束“${old.n}”，回到原来的自由世界`:'已回到自由世界');return true;
+    installState(session.state,false,session.name);closeModal();toast(old?`已结束“${old.n}”，回到原来的自由世界`:'已回到自由世界');return true;
   }
-  installState(null,true);
+  installState(null,true,'溪谷 1');setOnboardingStep(S,ONBOARDING_STEP_DONE);
   Storage.createSlot('溪谷 1',S,true);saveNow();closeModal();toast('已创建新的自由世界');return true;
 }
-function keepChallengeWorld(){
+async function keepChallengeWorld(){
   const C=S.ch&&CHALLENGES[S.ch.id];if(!C)return;
-  const name=window.prompt('给这个自由世界起个名字：',`${C.n}之后`);
+  const name=await UiDialog.prompt('给这个自由世界起个名字。',{title:'保留挑战世界',defaultValue:`${C.n}之后`,confirmLabel:'另存'});
   if(name===null)return;
   try{
     const session=Storage.promoteChallenge(S,name);
-    installState(session.state,false);closeModal();toast('挑战世界已另存为自由存档');
+    installState(session.state,false,session.name);closeModal();toast('挑战世界已另存为自由存档');
   }catch(err){
-    window.alert(err.code==='SLOTS_FULL'?'自由存档槽已满，请先在“存档”里删除一个旧世界。':err.message);
+    await UiDialog.alert(err.code==='SLOTS_FULL'?'自由存档槽已满，请先在“存档”里删除一个旧世界。':err.message,{title:'无法另存'});
   }
 }
 let mdlMode='',mdlReturnFocus=null;
@@ -467,7 +478,7 @@ function openModal(mode){
   }
   $('mdl').hidden=false;document.querySelector('#mdl .dlg').focus({preventScroll:true});
 }
-function mdlHidden(){return $('mdl').hidden&&$('saveMdl').hidden;}
+function mdlHidden(){return $('mdl').hidden&&$('saveMdl').hidden&&!UiDialog.isOpen();}
 function closeModal(){
   $('mdl').hidden=true;mdlMode='';
   const el=mdlReturnFocus;mdlReturnFocus=null;
@@ -476,18 +487,18 @@ function closeModal(){
 $('chBtn').addEventListener('click',()=>openModal('list'));
 $('techBtn').addEventListener('click',()=>openModal('tech'));
 $('frontierBtn').addEventListener('click',()=>openModal('frontier'));
-$('gQuit').addEventListener('click',()=>{if(S.ch&&window.confirm('结束当前挑战并回到挑战前的自由世界吗？'))returnToFreeWorld();});
-$('mdl').addEventListener('click',e=>{
+$('gQuit').addEventListener('click',async()=>{if(S.ch&&await UiDialog.confirm('挑战前的自由世界仍会保留。',{title:'结束当前挑战吗？',confirmLabel:'回到原世界'}))returnToFreeWorld();});
+$('mdl').addEventListener('click',async e=>{
   if(e.target.id==='mdl'&&(mdlMode==='list'||mdlMode==='tech'||mdlMode==='frontier')){closeModal();return;}
-  if(e.target.closest('[data-act="launch"]')){launchIsle();return;}
+  if(e.target.closest('[data-act="launch"]')){await launchIsle();return;}
   const b=e.target.closest('button');if(!b)return;
   if(b.dataset.tech){pickTech(b.dataset.tech);return;}
-  if(b.dataset.act==='cancelTech'){dropTech();return;}
+  if(b.dataset.act==='cancelTech'){await dropTech();return;}
   if(b.dataset.act==='list'){openModal('list');return;}
   if(b.dataset.act==='return'){returnToFreeWorld();return;}
-  if(b.dataset.act==='keep'){keepChallengeWorld();return;}
+  if(b.dataset.act==='keep'){await keepChallengeWorld();return;}
   if(b.dataset.act==='close'){closeModal();return;}
-  if(b.dataset.ch!==undefined&&b.dataset.ch){startChallenge(b.dataset.ch);return;}
+  if(b.dataset.ch!==undefined&&b.dataset.ch){await startChallenge(b.dataset.ch);return;}
 });
 function trapDialogFocus(e,box){
   if(e.key!=='Tab'||box.hidden)return;
@@ -500,6 +511,7 @@ function trapDialogFocus(e,box){
   else if(!e.shiftKey&&active===last){e.preventDefault();first.focus();}
 }
 document.addEventListener('keydown',e=>{
+  if(UiDialog.isOpen())return;
   const active=!$('dlg').hidden?$('dlg'):!$('saveMdl').hidden?$('saveMdl'):!$('mdl').hidden?$('mdl'):null;
   if(active)trapDialogFocus(e,active);
   if(e.key==='Escape'&&!$('saveMdl').hidden){closeSaveManager();return;}
@@ -558,9 +570,9 @@ function pickTech(id){
   chron(`溪谷拨出公库 ${T.cost} 金，开始研究${T.n}。`,'choice');
   toast(`开始研究${T.n}`);dirty=true;renderTechModal();updateUI();
 }
-function dropTech(){
+async function dropTech(){
   const r=S.research;if(!r)return;const T=TECHS[r.id];
-  if(!window.confirm(`放弃研究${T.n}吗？已经投入的日子会作废，公库退回 ${Math.round(T.cost*0.5)} 金。`))return;
+  if(!await UiDialog.confirm(`已经投入的日子会作废，公库退回 ${Math.round(T.cost*0.5)} 金。`,{title:`放弃研究${T.n}吗？`,confirmLabel:'放弃研究'}))return;
   const back=cancelResearch(S);
   chron(`溪谷放弃了${T.n}的研究，退回 ${back} 金。`,'choice');
   dirty=true;renderTechModal();updateUI();
@@ -612,9 +624,9 @@ function renderFrontierModal(){
   html+='<button class="opt free" data-act="close"><b>关闭</b></button>';
   replaceModalOptions(html);
 }
-function launchIsle(){
+async function launchIsle(){
   if(!expeditionReady(S))return;
-  if(!window.confirm(`确定远征南屿吗？公库会花掉 ${FRONTIER.treasury} 金，带走 ${FRONTIER.provisions} 担粮食。失败的话，这些都会白费。`))return;
+  if(!await UiDialog.confirm(`公库会花掉 ${FRONTIER.treasury} 金，带走 ${FRONTIER.provisions} 担粮食。失败的话，这些都会白费。`,{title:'确定远征南屿吗？',confirmLabel:'扬帆出发'}))return;
   const team=launchExpedition(S);if(!team)return;
   // launchExpedition owns village/home assignment and the exact go-home target.
   // The UI must not randomize that destination again.
@@ -657,7 +669,6 @@ $('fWatch').addEventListener('click',()=>{
 
 /* ---------------- 地图绘制 ---------------- */
 const cv=$('map'),ctx=cv.getContext('2d');bindContext(ctx);
-const MAP_ARIA_BASE=cv.getAttribute('aria-label')||'溪谷群岛地图';
 const view={w:0,h:0,dpr:1,zoom:1,panX:0,panY:0,tw:30,ox:0,oy:0};
 let tool='look',buildSel='granary',hoverPt=null,moveSrc=null,dragGhost=null,kbTile=null;
 let theme={label:'#fff',ink:'#263022',line:'#dfe2d2',accent:'#4f7136',accentInk:'#fff',dark:false};
@@ -940,11 +951,13 @@ function updateFate(){
 let lastChron=-1;
 function updateChron(){
   if(S.chronVer===lastChron)return;lastChron=S.chronVer;
-  $('chron').innerHTML=S.chron.slice(-50).reverse().map(c=>`<li class="k-${c.k}"><time>${dateLabel(c.d)}</time><span>${c.t}</span></li>`).join('');
+  renderChronicleList($('chron'),S.chron.slice().reverse(),dateLabel);
   setT('chronCount',`共 ${S.chron.length} 条`);
 }
 function updateUI(){
   const se=seasonIdx();
+  setT('worldName',S.worldName||'溪谷群岛');
+  syncMapAriaLabel();
   setT('date',`第 ${Math.floor(S.day/YEAR)+1} 年，${SEASONS[se]}，第 ${S.day%SEASON+1} 日`);
   const w=[`${SEASONS[se]}季`];let warn=false;
   if(S.drought>0){w.push(`干旱还剩 ${S.drought} 日`);warn=true;}
@@ -991,17 +1004,17 @@ function openSaveManager(){
 function closeSaveManager(){
   $('saveMdl').hidden=true;const el=saveReturnFocus;saveReturnFocus=null;if(el&&typeof el.focus==='function')el.focus({preventScroll:true});
 }
-function loadFreeSlot(id,fromImport){
+async function loadFreeSlot(id,fromImport){
   const info=Storage.getActiveInfo();
-  if(info.kind==='challenge'&&!window.confirm('加载自由世界会结束当前挑战。继续吗？'))return;
+  if(info.kind==='challenge'&&!await UiDialog.confirm('加载自由世界会结束当前挑战。',{title:'结束挑战并加载吗？',confirmLabel:'加载'}))return;
   const env=Storage.loadSlot(id,false);
   saveNow();
   Storage.loadSlot(id,true);
   if(info.kind==='challenge')Storage.clearChallenge();
-  installState(env.state,false);closeSaveManager();toast(fromImport?'已导入并加载存档':'已加载存档');
+  installState(env.state,false,env.name);closeSaveManager();toast(fromImport?'已导入并加载存档':'已加载存档');resumeOnboardingIfNeeded();
 }
 $('saveBtn').addEventListener('click',openSaveManager);
-$('saveMdl').addEventListener('click',e=>{
+$('saveMdl').addEventListener('click',async e=>{
   if(e.target.id==='saveMdl'){closeSaveManager();return;}
   const b=e.target.closest('button');if(!b)return;
   const global=b.dataset.saveGlobal,act=b.dataset.saveAct,id=b.dataset.id;
@@ -1011,30 +1024,35 @@ $('saveMdl').addEventListener('click',e=>{
     if(global==='export'){const info=Storage.getActiveInfo();downloadJson(Storage.exportActive(),info.name||'hejing-save');return;}
     if(global==='import'){$('saveImport').click();return;}
     if(global==='new'){
-      if(Storage.listSlots().length>=Storage.MAX_SLOTS){window.alert(`最多只能保留 ${Storage.MAX_SLOTS} 个自由世界，请先删除一个旧存档。`);return;}
+      if(Storage.listSlots().length>=Storage.MAX_SLOTS){await UiDialog.alert(`最多只能保留 ${Storage.MAX_SLOTS} 个自由世界，请先删除一个旧存档。`,{title:'存档槽已满'});return;}
       const info=Storage.getActiveInfo();
-      if(info.kind==='challenge'&&!window.confirm('新建自由世界会结束当前挑战，但挑战前的自由世界仍会保留。继续吗？'))return;
-      const name=window.prompt('给新世界起个名字：',`溪谷 ${Storage.listSlots().length+1}`);if(name===null)return;
-      saveNow();installState(null,true);
-      Storage.createSlot(name,S,true);if(info.kind==='challenge')Storage.clearChallenge();
+      if(info.kind==='challenge'&&!await UiDialog.confirm('新建自由世界会结束当前挑战，但挑战前的自由世界仍会保留。',{title:'新建自由世界吗？',confirmLabel:'新建'}))return;
+      const fallback=`溪谷 ${Storage.listSlots().length+1}`;
+      const name=await UiDialog.prompt('给新世界起个名字。',{title:'新建世界',defaultValue:fallback,confirmLabel:'创建'});if(name===null)return;
+      const next=normalizeWorldName(name,fallback);
+      saveNow();installState(null,true,next);setOnboardingStep(S,ONBOARDING_STEP_DONE);
+      Storage.createSlot(next,S,true);if(info.kind==='challenge')Storage.clearChallenge();
       saveNow();closeSaveManager();toast('新世界已创建');return;
     }
-    if(act==='load'){loadFreeSlot(id,false);return;}
-    if(act==='rename'){const slot=Storage.listSlots().find(s=>s.id===id),name=window.prompt('新的存档名称：',slot?slot.name:'');if(name!==null){Storage.renameSlot(id,name);renderSaveManager();}return;}
+    if(act==='load'){await loadFreeSlot(id,false);return;}
+    if(act==='rename'){
+      const slot=Storage.listSlots().find(s=>s.id===id),name=await UiDialog.prompt('输入新的世界名称。',{title:'重命名世界',defaultValue:slot?slot.name:'',confirmLabel:'保存'});
+      if(name!==null){const next=normalizeWorldName(name,(slot&&slot.name)||'溪谷');const env=Storage.loadSlot(id,false);env.state.worldName=next;Storage.saveSlot(id,env.state);Storage.renameSlot(id,next);const info=Storage.getActiveInfo();if(info.kind==='slot'&&info.id===id){S.worldName=next;saveNow();}renderSaveManager();updateUI();}return;
+    }
     if(act==='export'){const slot=Storage.listSlots().find(s=>s.id===id);downloadJson(Storage.exportSlot(id),slot?slot.name:'hejing-save');return;}
-    if(act==='delete'){const slot=Storage.listSlots().find(s=>s.id===id);if(window.confirm(`确定删除“${slot?slot.name:'这个存档'}”吗？此操作无法恢复。`)){Storage.deleteSlot(id);renderSaveManager();}return;}
-  }catch(err){window.alert(err.message||'存档操作失败。');}
+    if(act==='delete'){const slot=Storage.listSlots().find(s=>s.id===id);if(await UiDialog.confirm('此操作无法恢复。',{title:`确定删除“${slot?slot.name:'这个存档'}”吗？`,confirmLabel:'删除'})){Storage.deleteSlot(id);renderSaveManager();}return;}
+  }catch(err){await UiDialog.alert(err.message||'存档操作失败。',{title:'存档操作失败'});}
 });
 $('saveImport').addEventListener('change',async e=>{
   const file=e.target.files&&e.target.files[0];e.target.value='';if(!file)return;
   try{
     const info=Storage.getActiveInfo();
-    if(info.kind==='challenge'&&!window.confirm('导入并加载自由世界会结束当前挑战。继续吗？'))return;
+    if(info.kind==='challenge'&&!await UiDialog.confirm('导入并加载自由世界会结束当前挑战。',{title:'结束挑战并导入吗？',confirmLabel:'导入'}))return;
     saveNow();
     const env=Storage.importText(await file.text()),loaded=Storage.loadSlot(env.id,true);
     if(info.kind==='challenge')Storage.clearChallenge();
-    installState(loaded.state,false);closeSaveManager();toast('已导入并加载存档');
-  }catch(err){window.alert(err.message||'导入失败。');renderSaveManager();}
+    installState(loaded.state,false,loaded.name);closeSaveManager();toast('已导入并加载存档');resumeOnboardingIfNeeded();
+  }catch(err){await UiDialog.alert(err.message||'导入失败。',{title:'导入失败'});renderSaveManager();}
 });
 
 /* ---------------- 交互 ---------------- */
@@ -1090,11 +1108,14 @@ function keyboardTileStatus(t){
   const occupants=people.length?'，附近居民 '+people.slice(0,3).map(p=>p.name).join('、')+(people.length>3?'等 '+people.length+' 人':''):'';
   return '键盘光标：'+where+'，第 '+(t.i+1)+' 行第 '+(t.j+1)+' 列'+occupants;
 }
+function syncMapAriaLabel(status=kbTile?keyboardTileStatus(kbTile):''){
+  cv.setAttribute('aria-label',mapAriaLabel(S.worldName,status));
+}
 function syncKeyboardTile(){
   if(!kbTile)return;
   const [x,y]=iso(kbTile.i,kbTile.j);hoverPt={x,y};
   const status=keyboardTileStatus(kbTile);
-  cv.setAttribute('aria-label',MAP_ARIA_BASE+'。'+status);
+  syncMapAriaLabel(status);
   $('mapKbStatus').textContent=status;
 }
 cv.addEventListener('focus',()=>{
@@ -1252,14 +1273,14 @@ $('zout').onclick=()=>zoomTo(view.zoom/1.35);
 $('zfit').onclick=()=>{view.panX=0;view.panY=0;zoomTo(1);};
 $('play').onclick=()=>{S.paused=!S.paused;if(!S.people.length)S.paused=true;updateUI();};
 $('speed').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.speed=+b.dataset.s;syncControls();});
-$('reset').onclick=()=>{
+$('reset').onclick=async()=>{
   const info=Storage.getActiveInfo();
   if(info.kind==='challenge'){
-    if(window.confirm('“重来”会结束当前挑战并回到挑战前的自由世界。继续吗？'))returnToFreeWorld();
+    if(await UiDialog.confirm('“重来”会结束当前挑战并回到挑战前的自由世界。',{title:'结束挑战吗？',confirmLabel:'回到原世界'}))returnToFreeWorld();
     return;
   }
-  if(!window.confirm(`确定重来“${info.name||'当前世界'}”吗？这个存档槽会被新的世界覆盖，且无法恢复。`))return;
-  installState(null,true);saveNow();toast('当前存档已重新开始');
+  if(!await UiDialog.confirm('这个存档槽会被新的世界覆盖，且无法恢复。',{title:`确定重来“${info.name||'当前世界'}”吗？`,confirmLabel:'重新开始'}))return;
+  installState(null,true,info.name||S.worldName);setOnboardingStep(S,ONBOARDING_STEP_DONE);saveNow();toast('当前存档已重新开始');
 };
 $('tax').addEventListener('input',e=>{S.tax=+e.target.value/100;$('taxv').textContent=e.target.value+'%';});
 $('policy').addEventListener('change',e=>{S.policy=e.target.value;$('policyDesc').textContent=POLICIES[S.policy];chron(`溪谷改行“${e.target.selectedOptions[0].textContent}”。`,'info');updateUI();});
@@ -1292,16 +1313,21 @@ configureEconomy({
   maybeDilemma,
   checkChallenge
 });
+function guardDay(){
+  const safe=monotonicDay(observedDay,S.day);
+  if(safe!==S.day){console.error('Simulation day rollback blocked',{previous:observedDay,current:S.day});S.day=safe;dirty=true;}
+  observedDay=S.day;
+}
 function frame(now){
-  const dt=Math.min(0.1,(now-last)/1000);last=now;
-  if(!S.paused&&!S.pending&&!S.alerts.length&&mdlHidden()&&S.people.length){acc+=dt*TPS[S.speed];let n=0;while(acc>=1&&n<6){tick();acc-=1;n++;}if(n)dirty=true;}
+  const dt=Math.min(0.1,(now-last)/1000);last=now;guardDay();
+  if(!S.paused&&!S.pending&&!S.alerts.length&&mdlHidden()&&S.people.length){acc+=dt*TPS[S.speed];let n=0;while(acc>=1&&n<6){tick();guardDay();acc-=1;n++;}if(n)dirty=true;}
   movePeople(dt);draw(now);
   if(dirty&&now-lastUI>200){updateUI();lastUI=now;dirty=false;}
   if(now-lastSave>5000){lastSave=now;saveNow();}
   requestAnimationFrame(frame);
 }
-function installState(raw,fresh){
-  S=fresh?newState():normalizeState(raw);setState(S);S.paused=false;
+function installState(raw,fresh,worldName=null){
+  S=fresh?newState():normalizeState(raw);if(worldName!==null)S.worldName=normalizeWorldName(worldName,S.worldName);setState(S);S.paused=false;observedDay=S.day;dilemmaDeferred=false;
   if(!S.people.length){
     seedPopulation();
     chron('第1年春。三十个人在溪谷群岛上开始了他们的生活。','info');
@@ -1311,16 +1337,41 @@ function installState(raw,fresh){
   closeInfo();colorKey='';terrainGen++;lastChron=-1;frontierKey='';for(const k in _c)delete _c[k];
   computeHouses();syncControls();dirty=true;updateUI();
 }
-function init(fresh){
-  if(fresh){installState(null,true);return;}
+let onboardingRun=null;
+function needsOnboarding(){return Storage.getActiveInfo().kind==='slot'&&!onboardingComplete(S);}
+function resumeOnboardingIfNeeded(){
+  if(!needsOnboarding()||onboardingRun)return onboardingRun;
+  onboardingRun=firstVisit().catch(err=>{console.error('Onboarding failed',err);toast('新手引导未能完成；游戏已恢复，可稍后刷新重试',true);}).finally(()=>{onboardingRun=null;});
+  return onboardingRun;
+}
+function init(){
   const boot=Storage.bootstrap();
-  if(boot.session&&boot.session.state)installState(boot.session.state,false);
-  else{installState(null,true);Storage.createSlot('溪谷 1',S,true);saveNow();}
+  if(boot.session&&boot.session.state)installState(boot.session.state,false,boot.session.name);
+  else{installState(null,true,'溪谷 1');Storage.createSlot('溪谷 1',S,true);saveNow();}
   if(boot.migrated)setTimeout(()=>toast('旧版存档已安全迁移到 Save System v2'),60);
   if(boot.migrationError)setTimeout(()=>toast(boot.migrationError,true),60);
 }
+async function firstVisit(){
+  try{
+    await withTemporaryPause(S,async()=>{
+      updateUI();
+      if(S.onboarding.step<ONBOARDING_STEP_GUIDE){
+        const name=await UiDialog.prompt('这里不是一张等待你征服的地图。三十个人会自己生活、结交、成家、衰老；你可以观察，也可以偶尔轻轻拨动他们的命运。\n\n先给这个世界起个名字。',{title:'欢迎来到溪谷',defaultValue:S.worldName||'溪谷 1',confirmLabel:'继续'});
+        if(name!==null){const next=normalizeWorldName(name,'溪谷 1');S.worldName=next;const info=Storage.getActiveInfo();if(info.id)Storage.renameSlot(info.id,next);}
+        setOnboardingStep(S,ONBOARDING_STEP_GUIDE);saveNow();
+      }
+      if(S.onboarding.step<ONBOARDING_STEP_DONE){
+        await UiDialog.alert('先让时间流动，看看粮食、财富和人与人的关系怎样变化。\n\n想干预时，可以用左侧的自然事件，或在右侧花“恩惠”帮助某个人；重要选择都会留下编年史和一生之书。\n\n没有唯一的胜利方式。观察这个小社会会走向哪里，就是自由模式的核心。',{title:'先观察，再轻轻干预',confirmLabel:'让时间开始流动'});
+        setOnboardingStep(S,ONBOARDING_STEP_DONE);saveNow();
+      }
+    });
+  }finally{
+    dirty=true;updateUI();
+  }
+}
 buildStats();buildSeeds();readTheme();
-init(false);
+init();
+resumeOnboardingIfNeeded();
 if(window.ResizeObserver)new ResizeObserver(resize).observe($('mapwrap'));
 window.addEventListener('resize',resize);
 window.addEventListener('pagehide',saveNow);
