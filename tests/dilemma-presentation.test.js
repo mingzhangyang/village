@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createDilemmaPresentation, shouldAutoDeferDilemma } from '../src/ui/dilemma-presentation.js';
+import { createDilemmaPresentation, pendingDilemmaIsValid, shouldAutoDeferDilemma } from '../src/ui/dilemma-presentation.js';
 
 describe('dilemma presentation ownership',()=>{
   it('releases simulation blocking when a dilemma is deferred and reacquires it when reopened',()=>{
@@ -20,6 +20,19 @@ describe('dilemma presentation ownership',()=>{
     expect(presentation.blocksSimulation(pending)).toBe(false);
     presentation.restore(null);
     expect(presentation.blocksSimulation(null)).toBe(false);
+  });
+
+  it('expires unresolved work through the dilemma lifecycle contract without touching completed results',()=>{
+    const dilemmas={sick:{valid:d=>d.patientAlive},plain:{}};
+    expect(pendingDilemmaIsValid({k:'sick',d:{patientAlive:true},res:null},dilemmas)).toBe(true);
+    expect(pendingDilemmaIsValid({k:'sick',d:{patientAlive:false},res:null},dilemmas)).toBe(false);
+    expect(pendingDilemmaIsValid({k:'sick',d:{patientAlive:false},res:'already decided'},dilemmas)).toBe(true);
+    expect(pendingDilemmaIsValid({k:'plain',d:{},res:null},dilemmas)).toBe(true);
+    expect(pendingDilemmaIsValid({k:'missing',d:{},res:null},dilemmas)).toBe(false);
+  });
+
+  it('treats failing validators as stale instead of allowing a renderer crash',()=>{
+    expect(pendingDilemmaIsValid({k:'broken',d:{},res:null},{broken:{valid(){throw new Error('stale');}}})).toBe(false);
   });
 
   it('auto-defers new dilemmas only at the fast 10x pace',()=>{
