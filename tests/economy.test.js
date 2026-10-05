@@ -174,6 +174,20 @@ describe('economy', () => {
   });
 
 
+  it('repairs out-of-range happiness before and after natural drift', () => {
+    const state = newState(909);
+    const person = createNonWorker(state, { wealth: 100 });
+    person.happiness = 295;
+    state.food = 100;
+    state.tax = 0;
+    configureTestEconomy();
+
+    tick();
+
+    expect(person.happiness).toBeGreaterThanOrEqual(0);
+    expect(person.happiness).toBeLessThanOrEqual(100);
+  });
+
   it('keeps economy outputs finite across all food policies', () => {
     for (const [index, policy] of ['need', 'equal', 'work', 'market'].entries()) {
       const state = newState(500 + index);
