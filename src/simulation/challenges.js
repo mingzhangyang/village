@@ -1,3 +1,5 @@
+import { adjustResidentHappiness } from './invariants.js';
+
 export const CHALLENGE_DEADLINES = Object.freeze({
   drought: 120,
   equal: 400,
@@ -48,7 +50,7 @@ export function createChallenges({ getState, YEAR, SEASON, clamp, rand, chron })
       if(challengeDeadlineReached('grow',el)||!n)return {st:'lose',why:`十五年到了，溪谷有 ${n} 人。`};
       return {st:'run',txt:`人口 ${n}/55，剩 ${Math.ceil((600-el)/YEAR)} 年。`,pct:n/55};}},
   stay:{n:'无人离去',d:'税率 30%、自由市场，人心浮动。八年里不能有一个人离开溪谷，到期时凝聚力不能低于 50。',
-    setup(){const S=getState();S.tax=0.3;S.policy='market';S.cohesion=40;S.people.forEach(p=>p.happiness=clamp(p.happiness-12,0,100));},
+    setup(){const S=getState();S.tax=0.3;S.policy='market';S.cohesion=40;S.people.forEach(p=>adjustResidentHappiness(p,-12));},
     check(c,el){const S=getState();
       if(S.left>c.left0)return {st:'lose',why:`${S.lastLeft}离开了溪谷。`};
       if(challengeDeadlineReached('stay',el))return Math.round(S.cohesion)>=50?{st:'win',why:`八年里没有一个人离开，凝聚力达到 ${Math.round(S.cohesion)}。`}:{st:'lose',why:`八年里没人离开，但凝聚力只有 ${Math.round(S.cohesion)}，不到 50。`};

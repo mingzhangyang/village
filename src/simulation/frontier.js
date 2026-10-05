@@ -4,6 +4,7 @@ import { YEAR, ageY } from './clock.js';
 import { random, rand, clamp } from './random.js';
 import { hasTech, TECHS } from './tech.js';
 import { freeSlot, homeTile, log } from './population.js';
+import { adjustResidentHappiness } from './invariants.js';
 
 export const FRONTIER={
   tech:'searoute',
@@ -156,7 +157,7 @@ export function frontierTick(state){
   if(random()<FRONTIER.stormChance){
     for(const p of islanders(state)){
       const before=p.health;
-      p.health-=rand(8,22);p.happiness=clamp(p.happiness-6,0,100);log(p,'在南屿遇上了一场大风暴');
+      p.health-=rand(8,22);adjustResidentHappiness(p,-6);log(p,'在南屿遇上了一场大风暴');
       if(before>0&&p.health<=0)p.fatalCause='风暴';
     }
     storm={event:'storm',text:'一场风暴扑向南屿，开拓者的窝棚被掀翻了好几间。'};
@@ -167,7 +168,7 @@ export function frontierTick(state){
   const morale=islandMorale(state);
   if(morale<FRONTIER.minMorale)return failExpedition(state,`开拓者人心思归（平均幸福 ${Math.round(morale)}，至少要 ${FRONTIER.minMorale}）`);
   state.frontier={stage:'settled',day:state.day,tries:f.tries};
-  for(const p of islanders(state).filter(p=>p.health>0)){p.happiness=clamp(p.happiness+15,0,100);log(p,'和大家一起把南屿变成了新的家园');}
+  for(const p of islanders(state).filter(p=>p.health>0)){adjustResidentHappiness(p,15);log(p,'和大家一起把南屿变成了新的家园');}
   return {event:'settled',text:`历经 ${FRONTIER.pioneerDays} 日开荒，南屿正式成为溪谷的第四个聚落！`};
 }
 
@@ -185,7 +186,7 @@ export function failExpedition(state,why){
   // 只把仍然活着的人送回去；当日刚死亡的人留给同一 tick 的统一死亡流程处理。
   const back=islanders(state).filter(p=>p.health>0);
   for(const p of back){
-    returnHome(state,p,origin);p.happiness=clamp(p.happiness-10,0,100);
+    returnHome(state,p,origin);adjustResidentHappiness(p,-10);
     log(p,'远征失败，垂头丧气地回到了故乡');
   }
   state.frontier={stage:'failed',day:state.day,retry:state.day+FRONTIER.retryDays,tries:f.tries};

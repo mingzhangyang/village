@@ -9,6 +9,7 @@ import { TECHS, SHIP_INTERVAL, hasTech, techBonus, techMult, advanceResearch } f
 import { MIGRATION_RULES, wealthStats, happinessBreakdown, cohesionBreakdown, migrationBreakdown } from './explainability.js';
 import { isWorker, need, log, chron, notify, living, makePerson, setRel, changeRel, remove, assignTarget, foodDays, chooseJob, friendCount } from './population.js';
 import { MAX_STAT_HISTORY_ENTRIES } from '../state-contract.js';
+import { clampResidentHappiness, setResidentHappiness } from './invariants.js';
 
 let hooks = {};
 
@@ -31,6 +32,7 @@ export function pushHist(){
 
 export function tick(){
   const S = getState();
+  clampResidentHappiness(S);
   const P=S.people;if(!P.length)return;
   S.day++;
   if(S.ch&&!S.ch.result){const C=hooks.challengeFor?.(S.ch.id);if(C&&C.tick)C.tick();}
@@ -185,7 +187,7 @@ export function tick(){
       teahouseUpgrade:upgradeOf(p.village,'teahouse'),
       frontierHardship:hardshipFor(S,p)
     });
-    p.happiness=clamp(p.happiness+(why.rawTarget-p.happiness)*0.07+rand(-0.8,0.8),0,100);
+    setResidentHappiness(p,p.happiness+(why.rawTarget-p.happiness)*0.07+rand(-0.8,0.8));
     if(p.happiness<MIGRATION_RULES.sadHappinessThreshold)p.sadDays++;else p.sadDays=Math.max(0,p.sadDays-1);
     if(p.sadDays===MIGRATION_RULES.warningSadDays&&p.job!=='child'&&canDepart(S,p))notify(p,'愁苦了很久，再这样下去可能会离开溪谷');
   }
@@ -288,6 +290,7 @@ export function tick(){
   else if(rs&&rs.stalled)chron(`${TECHS[rs.stalled].n}的研究停了下来：${rs.why}。`,'info');
   else if(rs&&rs.resumed)chron(`${TECHS[rs.resumed].n}的研究又重新开始了。`,'info');
 
+  clampResidentHappiness(S);
   pushHist();
   for(const p of P)if(random()<0.4)assignTarget(p);
   hooks.computeHouses?.();

@@ -5,9 +5,10 @@ import { JOBS, POLICIES } from './simulation/constants.js';
 import { random, rand, randi, pick, clamp, has } from './simulation/random.js';
 import { pickUi } from './ui/random.js';
 import { createUiDialog } from './ui/dialog.js';
-import { clampResidentHappiness, monotonicDay, normalizeWorldName } from './simulation/invariants.js';
+import { adjustResidentHappiness, monotonicDay, normalizeWorldName } from './simulation/invariants.js';
 import { describeTile, describeVillage } from './ui/inspect.js';
 import { mapAriaLabel, moveKeyboardTile, peopleOnKeyboardTile } from './ui/map-keyboard.js';
+import { renderChronicleList } from './ui/chronicle.js';
 import { bindContext, hx, mix, shade, rgba, poly, rrect, hash, drawSea, buildTerrain, drawWaterFx, drawTree, drawHouse, drawMountain, drawMine, drawFountain, drawBuilding, drawPerson, drawSparkle, drawGlows, drawWeather, drawVignette } from './ui/scene.js';
 import { newState, normalizeState, setState, configureState } from './simulation/state.js';
 import { configureEconomy, pushHist, tick } from './simulation/economy.js';
@@ -72,7 +73,7 @@ const SEEDS=[
     }},
   {k:'festival',more:true,n:'举办丰收节',d:'公库出资，人们欢聚几日',cd:30,
     st:()=>S.festival>0?'正在欢庆':cdState('festival'),dis:()=>cdLeft('festival')>0,on:()=>S.festival>0,
-    go(){const c=Math.min(S.treasury,40);S.treasury-=c;S.festival=6;S.people.forEach(p=>p.happiness=Math.min(100,p.happiness+6));chron(`溪谷办起了丰收节，公库出资 ${Math.round(c)} 金，人们彻夜欢歌。`,'choice');}},
+    go(){const c=Math.min(S.treasury,40);S.treasury-=c;S.festival=6;S.people.forEach(p=>adjustResidentHappiness(p,6));chron(`溪谷办起了丰收节，公库出资 ${Math.round(c)} 金，人们彻夜欢歌。`,'choice');}},
   {k:'plague',more:true,n:'疫病流行',d:'十五日内，人人都可能染病',cd:30,
     st:()=>S.plague>0?`进行中 ${S.plague}日`:cdState('plague'),dis:()=>S.plague>0||cdLeft('plague')>0,on:()=>S.plague>0,
     go(){S.plague=15;S.plagueId++;chron('一场疫病在溪谷蔓延开来。','choice');}},
@@ -99,7 +100,7 @@ function buildSeeds(){
 const nm=id=>{const p=byId(id);return p?p.name:'某人';};
 const VN=v=>MAP.V[v].n;
 const adults=()=>S.people.filter(p=>p.job!=='child');
-function moodVillage(v,a){for(const p of S.people)if(p.village===v)p.happiness=clamp(p.happiness+a,0,100);}
+function moodVillage(v,a){for(const p of S.people)if(p.village===v)adjustResidentHappiness(p,a);}
 const DILEMMAS={
   trade:{
     when:()=>S.treasury>=30?{}:null,
@@ -109,7 +110,7 @@ const DILEMMAS={
       {t:'答应交易',h:'粮食 +50，公库 −60',ok:()=>S.treasury>=60,go(){S.treasury-=60;S.food+=50;return '商队卸下粮袋，粮仓里多了 50 担粮食。';}},
       {t:'讨价还价',h:'也许能少花点，也许会谈崩',go(){
         if(random()<0.55){const c=Math.min(35,S.treasury);S.treasury-=c;S.food+=50;return `商队首领笑着让了步，只收了 ${Math.round(c)} 金。`;}
-        for(const p of S.people)if(p.job==='merchant')p.happiness=clamp(p.happiness-5,0,100);
+        for(const p of S.people)if(p.job==='merchant')adjustResidentHappiness(p,-5);
         return '商队觉得受了冒犯，转身离开了。溪湾的商人们有些失落。';}},
       {t:'婉拒',h:'一切照旧',go:()=>'商队收起货物，继续上路了。'}
     ]
@@ -130,11 +131,11 @@ const DILEMMAS={
     text:d=>`粮食越来越紧，只够吃 ${Math.floor(foodDays())} 天了。有人提议：向最富的三户，${d.ids.map(nm).join('、')}，征收一半家财，拿去岛外买粮。`,
     opts:d=>[
       {t:'征收',h:'能买回不少粮食，但三户会心生怨恨',go(){
-        let sum=0;for(const id of d.ids){const p=living(id);if(!p)continue;const x=Math.max(0,p.wealth)*0.5;p.wealth-=x;sum+=x;p.happiness=clamp(p.happiness-20,0,100);log(p,`一半家财（${Math.round(x)} 金）被征去买粮`);}
+        let sum=0;for(const id of d.ids){const p=living(id);if(!p)continue;const x=Math.max(0,p.wealth)*0.5;p.wealth-=x;sum+=x;adjustResidentHappiness(p,-20);log(p,`一半家财（${Math.round(x)} 金）被征去买粮`);}
         const f=Math.round(sum/2.5);S.food+=f;return `征得 ${Math.round(sum)} 金，从岛外买回 ${f} 担粮食。`;}},
       {t:'登门劝捐',h:'看他们愿不愿意，捐多少算多少',go(){
         let sum=0;const names=[];
-        for(const id of d.ids){const p=living(id);if(!p)continue;if(random()<(p.happiness>55||has(p,'好客')?0.75:0.3)){const x=Math.max(0,p.wealth)*0.25;p.wealth-=x;sum+=x;p.happiness=clamp(p.happiness+6,0,100);names.push(p.name);log(p,`主动捐出 ${Math.round(x)} 金买粮`);}}
+        for(const id of d.ids){const p=living(id);if(!p)continue;if(random()<(p.happiness>55||has(p,'好客')?0.75:0.3)){const x=Math.max(0,p.wealth)*0.25;p.wealth-=x;sum+=x;adjustResidentHappiness(p,6);names.push(p.name);log(p,`主动捐出 ${Math.round(x)} 金买粮`);}}
         if(!sum)return '三户都推说手头紧，一分也没捐。';
         const f=Math.round(sum/2.5);S.food+=f;S.cohesion=clamp(S.cohesion+3,0,100);return `${names.join('、')}捐了 ${Math.round(sum)} 金，买回 ${f} 担粮食。`;}},
       {t:'不干预',h:'各家自己想办法',go:()=>'富户们照旧过日子，穷人只能勒紧裤腰带。'}
@@ -154,7 +155,7 @@ const DILEMMAS={
         for(const p of fam){p.x=e.i;p.y=e.j;const h=homeTile(p);p.tx=h.i;p.ty=h.j;log(p,`一家人逃荒到溪谷，在${VN(d.v)}被收留`);}
         computeHouses();return `${fa.name}一家在${VN(d.v)}搭起了新家。`;}},
       {t:'送些粮食，请他们离开',h:'粮食 −20',go(){S.food=Math.max(0,S.food-20);return '他们带着粮食，划船去了别处。';}},
-      {t:'拒绝',h:'有人会觉得溪谷变冷漠了',go(){S.cohesion=clamp(S.cohesion-5,0,100);for(const p of S.people)if(has(p,'好客'))p.happiness=clamp(p.happiness-6,0,100);return '破船又漂走了。好几个人在岸边站了很久。';}}
+      {t:'拒绝',h:'有人会觉得溪谷变冷漠了',go(){S.cohesion=clamp(S.cohesion-5,0,100);for(const p of S.people)if(has(p,'好客'))adjustResidentHappiness(p,-6);return '破船又漂走了。好几个人在岸边站了很久。';}}
     ]
   },
   dispute:{
@@ -166,7 +167,7 @@ const DILEMMAS={
     text:d=>`${nm(d.a)}和${nm(d.b)}为一块地的归属吵得不可开交，两人都来找你评理。`,
     opts:d=>{
       const judge=(w,l)=>()=>{const W=living(w),L=living(l);if(!W||!L)return '还没等你开口，两人已经不争了。';
-        W.happiness=clamp(W.happiness+10,0,100);W.wealth+=8;L.happiness=clamp(L.happiness-12,0,100);L.wealth-=Math.min(8,Math.max(0,L.wealth));
+        adjustResidentHappiness(W,10);W.wealth+=8;adjustResidentHappiness(L,-12);L.wealth-=Math.min(8,Math.max(0,L.wealth));
         setRel(W,L,Math.min(W.rel[L.id]||0,-40));log(W,`和${L.name}争地，赢了`);log(L,`和${W.name}争地输了，心里不服`);
         return `地判给了${W.name}。${L.name}很不服气，两人从此见面不说话。`;};
       return [
@@ -185,7 +186,7 @@ const DILEMMAS={
     text:d=>`${nm(d.p)}提议用公库 80 金办一间学堂，让孩子们从小学手艺。溪谷现在有 ${d.kids} 个孩子。`,
     opts:d=>[
       {t:'办学堂',h:'公库 −80，孩子们长大后手艺更好',ok:()=>S.treasury>=80,go(){
-        S.treasury-=80;S.school=true;const p=living(d.p);if(p){log(p,'牵头办起了学堂');p.happiness=clamp(p.happiness+10,0,100);}
+        S.treasury-=80;S.school=true;const p=living(d.p);if(p){log(p,'牵头办起了学堂');adjustResidentHappiness(p,10);}
         for(const c of S.people)if(c.job==='child')log(c,'进了学堂读书');return '学堂开张了，孩子们的读书声从早响到晚。';}},
       {t:'暂时不办',h:'把钱留着应急',go:()=>`${nm(d.p)}叹了口气，说那就再等等。`}
     ]
@@ -198,7 +199,7 @@ const DILEMMAS={
       {t:'停工整修十日',h:'矿工十日没有收入',go(){S.mineClosed=10;return '矿工们放下镐头，开始加固矿洞。';}},
       {t:'继续开采',h:'不耽误挣钱，但有风险',go(){
         const ms=S.people.filter(p=>p.job==='miner'&&canMine(S,p));
-        if(ms.length&&random()<0.45){const m=pick(ms);m.health-=rand(50,85);log(m,'在矿洞塌方中受了重伤');for(const q of ms)q.happiness=clamp(q.happiness-10,0,100);return `矿洞塌了一角，${m.name}被压在石头下，受了重伤。`;}
+        if(ms.length&&random()<0.45){const m=pick(ms);m.health-=rand(50,85);log(m,'在矿洞塌方中受了重伤');for(const q of ms)adjustResidentHappiness(q,-10);return `矿洞塌了一角，${m.name}被压在石头下，受了重伤。`;}
         return '裂缝没有再扩大，大家松了一口气。';}}
     ]
   },
@@ -219,9 +220,9 @@ const DILEMMAS={
     text:d=>{const p=byId(d.p);return `${p.name}（${ageY(p)}岁，${JOBS[p.job].n}）说岛上的日子一眼望得到头，想去外面闯一闯。`;},
     opts:d=>{const p=byId(d.p),t=p?ta(p):'他';return [
       {t:'挽留：公库给 20 金安家',h:`${t}会留下，心里也更踏实`,ok:()=>S.treasury>=20,go(){
-        S.treasury-=20;const q=living(d.p);if(!q)return '';q.wealth+=20;q.happiness=clamp(q.happiness+15,0,100);log(q,'被大家挽留，决定留在溪谷');return `${q.name}收下了安家钱，决定留下来。`;}},
+        S.treasury-=20;const q=living(d.p);if(!q)return '';q.wealth+=20;adjustResidentHappiness(q,15);log(q,'被大家挽留，决定留在溪谷');return `${q.name}收下了安家钱，决定留下来。`;}},
       {t:'祝一路顺风',h:`${t}会离开溪谷`,go(){const q=living(d.p);if(!q)return '';if(!remove(q,'left','wander'))return '开拓期间南屿居民不能通过普通出走离岛。';return `${q.name}背上行囊，坐船离开了溪谷。`;}},
-      {t:`让${t}再想想`,h:'也许过阵子就好了，也许不会',go(){const q=living(d.p);if(q){q.happiness=clamp(q.happiness-3,0,100);log(q,'想出去闯荡，被劝再想想');}return `${t}点点头，没再说什么。`;}}
+      {t:`让${t}再想想`,h:'也许过阵子就好了，也许不会',go(){const q=living(d.p);if(q){adjustResidentHappiness(q,-3);log(q,'想出去闯荡，被劝再想想');}return `${t}点点头，没再说什么。`;}}
     ];}
   },
   isle:{
@@ -231,11 +232,11 @@ const DILEMMAS={
     opts:()=>[
       {t:'派船送补给',h:'公库 −40、粮食 −40；开拓者健康 +20、幸福 +12',ok:()=>S.treasury>=40&&S.food>=40,go(){
         S.treasury-=40;S.food-=40;
-        for(const p of islanders(S)){p.health=Math.min(100,p.health+20);p.happiness=clamp(p.happiness+12,0,100);log(p,'收到了故乡送来的补给');}
+        for(const p of islanders(S)){p.health=Math.min(100,p.health+20);adjustResidentHappiness(p,12);log(p,'收到了故乡送来的补给');}
         return '补给船靠了岸，开拓者们捧着家乡的米和信，好几个人红了眼眶。';}},
       {t:'让他们咬牙坚持',h:'开拓者幸福 −6，但患难之中彼此更亲近',go(){
         const ps=islanders(S);
-        for(const p of ps){p.happiness=clamp(p.happiness-6,0,100);for(const q of ps)if(q.id>p.id)changeRel(p,q,12);}
+        for(const p of ps){adjustResidentHappiness(p,-6);for(const q of ps)if(q.id>p.id)changeRel(p,q,12);}
         return '开拓者们挤在一个窝棚里熬过了难关，彼此成了过命的交情。';}},
       {t:'接回病弱的人',h:'开荒期唯一能离岛的机会：健康低于 50 的人回到故乡，岛上人手会变少',go(){
         const back=islanders(S).filter(p=>p.health>0&&p.health<50);
@@ -295,10 +296,10 @@ $('pendingBtn').addEventListener('click',()=>{$('play').focus({preventScroll:tru
 
 /* ---------------- 伸出援手 ---------------- */
 const HELP={
-  gift:{n:'送了一笔钱',go(p){p.wealth+=30;p.happiness=clamp(p.happiness+6,0,100);return '收到一笔意外之财（30 金）';}},
+  gift:{n:'送了一笔钱',go(p){p.wealth+=30;adjustResidentHappiness(p,6);return '收到一笔意外之财（30 金）';}},
   teach:{n:'传授了手艺',go(p){p.skill=Math.min(100,p.skill+25);return p.job==='child'?'得到先生单独指点，学得飞快':'得到高人指点，手艺大进';}},
   heal:{n:'请郎中调养',go(p){p.health=Math.min(100,p.health+40);p.hungerDays=0;return `有人请来郎中为${ta(p)}调养身体`;}},
-  visit:{n:'登门陪伴',go(p){p.happiness=clamp(p.happiness+20,0,100);p.sadDays=0;return `有人登门，陪${ta(p)}说了一下午的话`;}}
+  visit:{n:'登门陪伴',go(p){adjustResidentHappiness(p,20);p.sadDays=0;return `有人登门，陪${ta(p)}说了一下午的话`;}}
 };
 function spendFavor(p,text,short){
   S.favor--;p.touched=(p.touched||0)+1;log(p,'✦ '+text);if(!S.watch.includes(p.id))S.watch.push(p.id);
@@ -392,7 +393,7 @@ function relocate(p,v){
   for(const id of p.children){const c=living(id);if(c&&c.job==='child'&&c.village===from&&!fam.includes(c))fam.push(c);}
   if(p.job==='child'){for(const id of p.parents){const q=living(id);if(q&&q.village===from&&!fam.includes(q))fam.push(q);}}
   const home=freeSlot(v);
-  for(const q of fam){q.village=v;q.home=home;q.happiness=clamp(q.happiness-4,0,100);log(q,`从${VN(from)}搬到了${VN(v)}`);assignTarget(q);const h=homeTile(q);q.tx=h.i+rand(-0.3,0.3);q.ty=h.j+rand(-0.3,0.3);}
+  for(const q of fam){q.village=v;q.home=home;adjustResidentHappiness(q,-4);log(q,`从${VN(from)}搬到了${VN(v)}`);assignTarget(q);const h=homeTile(q);q.tx=h.i+rand(-0.3,0.3);q.ty=h.j+rand(-0.3,0.3);}
   computeHouses();
   const who=fam.length>1?`${p.name}一家 ${fam.length} 口`:p.name;
   chron(`${who}从${VN(from)}搬到了${VN(v)}。`,'choice');toast(`${who}搬去了${VN(v)}`);dirty=true;updateUI();
@@ -950,11 +951,10 @@ function updateFate(){
 let lastChron=-1;
 function updateChron(){
   if(S.chronVer===lastChron)return;lastChron=S.chronVer;
-  $('chron').innerHTML=S.chron.slice().reverse().map(c=>`<li class="k-${c.k}"><time>${dateLabel(c.d)}</time><span>${c.t}</span></li>`).join('');
+  renderChronicleList($('chron'),S.chron.slice().reverse(),dateLabel);
   setT('chronCount',`共 ${S.chron.length} 条`);
 }
 function updateUI(){
-  clampResidentHappiness(S);
   const se=seasonIdx();
   setT('worldName',S.worldName||'溪谷群岛');
   syncMapAriaLabel();
