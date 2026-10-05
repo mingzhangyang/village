@@ -4,6 +4,24 @@ export const MAX_CHRON_ENTRIES = 120;
 export const MAX_PERSON_HISTORY_ENTRIES = 60;
 export const MAX_STAT_HISTORY_ENTRIES = 90;
 
+export const CHRONICLE_KINDS = Object.freeze(['info','event','birth','death','bond','leave','choice']);
+const CHRONICLE_KIND_SET = new Set(CHRONICLE_KINDS);
+
+export function normalizeChronicleKind(value){
+  return typeof value==='string'&&CHRONICLE_KIND_SET.has(value)?value:'info';
+}
+
+export function normalizeChronicleEntry(value,fallbackDay=0){
+  const entry=value&&typeof value==='object'?value:{};
+  const safeFallback=Number.isFinite(fallbackDay)?Math.max(0,Math.floor(fallbackDay)):0;
+  const day=Number.isFinite(entry.d)?Math.max(0,Math.floor(entry.d)):safeFallback;
+  return {
+    d:day,
+    t:typeof entry.t==='string'?entry.t:'',
+    k:normalizeChronicleKind(entry.k)
+  };
+}
+
 export const ONBOARDING_VERSION = 1;
 export const ONBOARDING_STEP_NAME = 0;
 export const ONBOARDING_STEP_GUIDE = 1;
