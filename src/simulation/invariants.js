@@ -1,11 +1,29 @@
+export function normalizeResidentHappiness(value,fallback=50){
+  const safeFallback=Number.isFinite(fallback)?fallback:50;
+  const numeric=Number.isFinite(value)?value:safeFallback;
+  return Math.min(100,Math.max(0,numeric));
+}
+
+export function setResidentHappiness(person,value){
+  if(!person||typeof person!=='object')return null;
+  person.happiness=normalizeResidentHappiness(value);
+  return person.happiness;
+}
+
+export function adjustResidentHappiness(person,delta){
+  if(!person||typeof person!=='object')return null;
+  const current=normalizeResidentHappiness(person.happiness);
+  const change=Number.isFinite(delta)?delta:0;
+  return setResidentHappiness(person,current+change);
+}
+
 export function clampResidentHappiness(state){
   const residents=[...(Array.isArray(state.people)?state.people:[]),...(Array.isArray(state.dead)?state.dead:[])];
   const seen=new Set();
   for(const person of residents){
     if(!person||typeof person!=='object'||seen.has(person))continue;
     seen.add(person);
-    const value=Number.isFinite(person.happiness)?person.happiness:50;
-    person.happiness=Math.min(100,Math.max(0,value));
+    setResidentHappiness(person,person.happiness);
   }
   return state;
 }
