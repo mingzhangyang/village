@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { monotonicDay, normalizeWorldName } from '../src/simulation/invariants.js';
+import { adjustResidentHappiness, monotonicDay, normalizeWorldName, setResidentHappiness } from '../src/simulation/invariants.js';
 import { newState, normalizeState } from '../src/simulation/state.js';
 import { MAX_CHRON_ENTRIES, MAX_PERSON_HISTORY_ENTRIES, MAX_STAT_HISTORY_ENTRIES, ONBOARDING_STEP_GUIDE, ONBOARDING_STEP_DONE, onboardingComplete, setOnboardingStep } from '../src/state-contract.js';
 
@@ -19,6 +19,15 @@ describe('simulation state invariants', () => {
     expect(normalized.dead[0].happiness).toBe(100);
   });
 
+  it('enforces happiness at the mutation boundary', () => {
+    const person={happiness:5};
+
+    expect(adjustResidentHappiness(person,-18)).toBe(0);
+    expect(person.happiness).toBe(0);
+    expect(adjustResidentHappiness(person,140)).toBe(100);
+    expect(setResidentHappiness(person,Number.NaN)).toBe(50);
+  });
+
   it('never permits an active simulation day to move backwards', () => {
     expect(monotonicDay(15, 16)).toBe(16);
     expect(monotonicDay(15, 15)).toBe(15);
@@ -34,6 +43,24 @@ describe('simulation state invariants', () => {
     expect(normalizeWorldName('   ','溪谷 2')).toBe('溪谷 2');
     expect(normalizeWorldName('  新世界  ','溪谷 2')).toBe('新世界');
     expect(normalizeWorldName('  山  海  ','溪谷 2')).toBe('山 海');
+  });
+
+  it('normalizes chronicle records at the import boundary', () => {
+    const state=newState(18);
+    state.day=33;
+    state.chron=[
+      {d:-8,t:'保留为纯文本 <b>不是标签</b>',k:'info" onmouseover="alert(1)'},
+      {d:4,t:42,k:'birth'},
+      null
+    ];
+
+    const normalized=normalizeState(state);
+
+    expect(normalized.chron).toEqual([
+      {d:0,t:'保留为纯文本 <b>不是标签</b>',k:'info'},
+      {d:4,t:'',k:'birth'},
+      {d:33,t:'',k:'info'}
+    ]);
   });
 
   it('reapplies retained-history limits when loading imported state', () => {
