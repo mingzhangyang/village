@@ -94,10 +94,32 @@ describe('explainability', () => {
 
     expect(result.rawTarget).toBeGreaterThan(100);
     expect(result.target).toBe(100);
-    expect(result.expectedChange).toBeCloseTo(
-      Math.min(100, 80 + (result.rawTarget - 80) * 0.07) - 80,
-      10,
-    );
+    expect(result.expectedChange).toBeCloseTo((100 - 80) * 0.07, 10);
+  });
+
+  it('keeps natural happiness drift inside the supported range even for corrupted inputs', () => {
+    const result = happinessBreakdown({
+      state: { tax: 0, festival: 1, drought: 0, publicPerCap: 1 },
+      person: {
+        wealth: 4095,
+        fed: 1,
+        health: 100,
+        partner: 1,
+        job: 'child',
+        traits: ['乐天'],
+        happiness: 295,
+      },
+      averageWealth: 1,
+      gini: 0,
+      seasonIndex: 0,
+      friendCount: 8,
+      marketCount: 2,
+      teahouseCount: 2,
+    });
+
+    expect(result.rawTarget).toBeGreaterThan(100);
+    expect(result.target).toBe(100);
+    expect(result.expectedChange).toBe(0);
   });
 
   it('explains drought and policy effects on cohesion using the production formula', () => {

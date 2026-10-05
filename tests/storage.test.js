@@ -69,6 +69,20 @@ describe('Save System v2', () => {
     expect(saves.loadActive().id).toBe(healthy.id);
   });
 
+  it('replaces the current slot in place so restart survives the next load', () => {
+    const oldState = { ...newState(), day: 720, food: 123 };
+    const slot = saves.createSlot('长久溪谷', oldState, true);
+    const freshState = { ...newState(), day: 0, food: 388 };
+
+    const replaced = saves.replaceSlot(slot.id, freshState, '长久溪谷');
+
+    expect(replaced.id).toBe(slot.id);
+    expect(saves.getActiveInfo()).toMatchObject({ kind: 'slot', id: slot.id, name: '长久溪谷' });
+    expect(saves.loadActive()).toMatchObject({ kind: 'slot', id: slot.id, state: freshState });
+    expect(saves.listSlots()).toHaveLength(1);
+    expect(saves.listSlots()[0]).toMatchObject({ id: slot.id, day: 0 });
+  });
+
   it('imports an exported envelope into a new slot without changing the active slot', () => {
     const originalState = { ...newState(), day: 31 };
     const original = saves.createSlot('原来的世界', originalState, true);

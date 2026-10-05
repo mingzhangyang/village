@@ -935,7 +935,7 @@ function updateFate(){
       teahouseUpgrade:statOf(buildingStats(S.built),p.village,'teahouse').bonus,
       frontierHardship:hardshipFor(S,p)
     });
-    setT('fHappyTrend',`驱动目标 ${Math.round(happyWhy.rawTarget)} · 每日约 ${signed(happyWhy.expectedChange)}`);
+    setT('fHappyTrend',`驱动目标 ${Math.round(happyWhy.target)} · 每日约 ${signed(happyWhy.expectedChange)}`);
     setH('fHappyWhy',whyRows(happyWhy.factors));
   }else{
     setT('fHappyTrend',p.status==='dead'?'生命已结束，幸福不再变化':'已离开溪谷，幸福不再模拟');
@@ -1298,7 +1298,16 @@ $('reset').onclick=async()=>{
     return;
   }
   if(!await UiDialog.confirm('这个存档槽会被新的世界覆盖，且无法恢复。',{title:`确定重来“${info.name||'当前世界'}”吗？`,confirmLabel:'重新开始'}))return;
-  installState(null,true,info.name||S.worldName);saveNow();toast('当前存档已重新开始');
+  const previous=structuredClone(S),name=info.name||S.worldName;
+  try{
+    if(!info.id)throw new Error('当前存档槽不存在，无法安全覆盖。');
+    installState(null,true,name);
+    Storage.replaceSlot(info.id,S,name);
+    toast('当前存档已重新开始');
+  }catch(err){
+    installState(previous,false,name);
+    await UiDialog.alert(err.message||'新的世界未能写入存档；原世界已恢复。',{title:'重来失败'});
+  }
 };
 $('tax').addEventListener('input',e=>{S.tax=+e.target.value/100;$('taxv').textContent=e.target.value+'%';});
 $('policy').addEventListener('change',e=>{S.policy=e.target.value;$('policyDesc').textContent=POLICIES[S.policy];chron(`溪谷改行“${e.target.selectedOptions[0].textContent}”。`,'info');updateUI();});
