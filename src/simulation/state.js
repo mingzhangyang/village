@@ -3,7 +3,7 @@ import { knownPersonSurname, migratedFamilyName } from './names.js';
 import { normalizeTech } from './tech.js';
 import { normalizeFrontier } from './frontier.js';
 import { clampResidentHappiness, normalizeWorldName } from './invariants.js';
-import { MAX_CHRON_ENTRIES, MAX_PERSON_HISTORY_ENTRIES, MAX_STAT_HISTORY_ENTRIES, freshOnboarding, normalizeOnboarding } from '../state-contract.js';
+import { MAX_CHRON_ENTRIES, MAX_PERSON_HISTORY_ENTRIES, MAX_STAT_HISTORY_ENTRIES, freshOnboarding, normalizeChronicleEntry, normalizeOnboarding } from '../state-contract.js';
 
 let activeState = null;
 let onDirty = () => {};
@@ -322,7 +322,7 @@ export function normalizeState(raw){
     state.hist[k]=values.filter(Number.isFinite).slice(-MAX_STAT_HISTORY_ENTRIES);
   }
   for(const k of ['people','dead','built','watch','alerts','chron'])if(!Array.isArray(state[k]))state[k]=[];
-  state.chron=state.chron.slice(-MAX_CHRON_ENTRIES);
+  state.chron=state.chron.slice(-MAX_CHRON_ENTRIES).map(entry=>normalizeChronicleEntry(entry,state.day));
   state.chronVer=Number.isFinite(o.chronVer)&&o.chronVer>=0?Math.floor(o.chronVer):state.chron.length;
   for(const person of [...state.people,...state.dead]){
     if(!person||typeof person!=='object')continue;
