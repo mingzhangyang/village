@@ -188,6 +188,24 @@ describe('economy', () => {
     expect(person.happiness).toBeLessThanOrEqual(100);
   });
 
+  it('drifts an in-range resident toward the bounded happiness target, not the raw score', () => {
+    const state = newState(910);
+    const person = createNonWorker(state, { wealth: 1_000_000_000_000 });
+    person.happiness = 80;
+    person.traits = ['乐天'];
+    person.partner = 999;
+    state.food = 100;
+    state.tax = 0;
+    state.festival = 2;
+    configureTestEconomy();
+
+    tick();
+
+    const boundedCenter = 80 + (100 - 80) * 0.07;
+    expect(person.happiness).toBeGreaterThanOrEqual(boundedCenter - 0.8);
+    expect(person.happiness).toBeLessThanOrEqual(boundedCenter + 0.8);
+  });
+
   it('keeps economy outputs finite across all food policies', () => {
     for (const [index, policy] of ['need', 'equal', 'work', 'market'].entries()) {
       const state = newState(500 + index);
