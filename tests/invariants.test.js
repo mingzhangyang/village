@@ -63,6 +63,19 @@ describe('simulation state invariants', () => {
     ]);
   });
 
+  it('rebases imported chronicle render counters', () => {
+    const state=newState(20);
+    state.chron=[{d:1,t:'旧条目',k:'info'}];
+    state.chronVer=Number.MAX_VALUE;
+
+    const normalized=normalizeState(state);
+
+    expect(normalized.chronVer).toBe(normalized.chron.length);
+    expect(normalized.chronVer).toBe(1);
+    normalized.chronVer++;
+    expect(normalized.chronVer).toBe(2);
+  });
+
   it('reapplies retained-history limits when loading imported state', () => {
     const state=newState(19);
     state.chron=Array.from({length:MAX_CHRON_ENTRIES+25},(_,d)=>({d,t:`事件 ${d}`,k:'info'}));

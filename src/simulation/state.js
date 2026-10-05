@@ -323,7 +323,10 @@ export function normalizeState(raw){
   }
   for(const k of ['people','dead','built','watch','alerts','chron'])if(!Array.isArray(state[k]))state[k]=[];
   state.chron=state.chron.slice(-MAX_CHRON_ENTRIES).map(entry=>normalizeChronicleEntry(entry,state.day));
-  state.chronVer=Number.isFinite(o.chronVer)&&o.chronVer>=0?Math.floor(o.chronVer):state.chron.length;
+  // chronVer is an in-memory render invalidation token, not persisted domain state.
+  // Rebase it after import/load so untrusted or precision-exhausted counters cannot
+  // prevent future chron() calls from changing the observable version.
+  state.chronVer=state.chron.length;
   for(const person of [...state.people,...state.dead]){
     if(!person||typeof person!=='object')continue;
     person.hist=Array.isArray(person.hist)?person.hist.slice(-MAX_PERSON_HISTORY_ENTRIES):[];
