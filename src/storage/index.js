@@ -122,6 +122,23 @@ function saveSlot(id,state){
   const index=loadIndex();upsertSummary(index,env);saveIndex(index);
   return env;
 }
+function replaceSlot(id,state,name){
+  if(!validState(state))fail('INVALID_STATE','新的世界状态不完整，无法覆盖当前存档。');
+  const old=readSlotEnvelope(id);
+  if(!old)fail('SLOT_MISSING','当前存档不存在或已经损坏，无法安全覆盖。');
+  const env=Object.assign({},old,{
+    name:cleanName(name,old.name),
+    updatedAt:new Date().toISOString(),
+    state
+  });
+  // Serialize before touching metadata, then write the slot itself last. The slot
+  // write is the commit point: if validation, serialization, or index staging
+  // fails, the previous world remains the loadable source of truth.
+  const serialized=JSON.stringify(env);
+  const index=loadIndex();upsertSummary(index,env);saveIndex(index);
+  store.setItem(slotKey(id),serialized);
+  return env;
+}
 function loadSlot(id,activate){
   const env=readSlotEnvelope(id);
   if(!env)fail('SLOT_BROKEN','这个存档不存在或已损坏。');
@@ -284,7 +301,7 @@ function bootstrap(){
 
 return {
   SCHEMA_VERSION,GAME_VERSION,MAX_SLOTS,
-  bootstrap,loadActive,saveActive,createSlot,saveSlot,loadSlot,renameSlot,deleteSlot,listSlots,getActiveInfo,
+  bootstrap,loadActive,saveActive,createSlot,saveSlot,replaceSlot,loadSlot,renameSlot,deleteSlot,listSlots,getActiveInfo,
   startChallenge,returnToOrigin,discardChallenge,clearChallenge,promoteChallenge,
   exportSlot,exportActive,importText,
   validateState:validState
