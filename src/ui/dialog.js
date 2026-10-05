@@ -19,7 +19,7 @@ export function createUiDialog(doc=globalThis.document){
     host=doc.createElement('div');host.id='askMdl';host.className='dlg-back';host.hidden=true;
 
     dlg=doc.createElement('div');dlg.className='dlg card ask-dlg';dlg.tabIndex=-1;
-    dlg.setAttribute('role','dialog');dlg.setAttribute('aria-modal','true');dlg.setAttribute('aria-labelledby','askTitle');
+    dlg.setAttribute('role','dialog');dlg.setAttribute('aria-modal','true');dlg.setAttribute('aria-labelledby','askTitle');dlg.setAttribute('aria-describedby','askText');
 
     kickEl=doc.createElement('div');kickEl.className='kick';kickEl.id='askKick';kickEl.textContent='请确认';
     titleEl=doc.createElement('h2');titleEl.id='askTitle';

@@ -74,6 +74,23 @@ describe('in-app dialog interaction contract',()=>{
     await expect(result).resolves.toBe('山海');
   });
 
+  it('associates every dialog with its title and body text',async()=>{
+    const {doc,ui}=setup();
+    const confirmResult=ui.confirm('这个操作无法恢复。',{title:'确定删除吗？'});
+    const dlg=doc.getElementById('askTitle').parentNode;
+    expect(dlg.getAttribute('aria-labelledby')).toBe('askTitle');
+    expect(dlg.getAttribute('aria-describedby')).toBe('askText');
+    expect(doc.getElementById('askText').textContent).toBe('这个操作无法恢复。');
+    doc.getElementById('askCancel').click();
+    await expect(confirmResult).resolves.toBe(false);
+
+    const alertResult=ui.alert('请先处理当前待决事项。',{title:'无法继续'});
+    expect(dlg.getAttribute('aria-describedby')).toBe('askText');
+    expect(doc.getElementById('askText').textContent).toBe('请先处理当前待决事项。');
+    doc.getElementById('askOk').click();
+    await alertResult;
+  });
+
   it('associates prompt input with title and description',async()=>{
     const {doc,ui}=setup();
     const result=ui.prompt('给世界命名',{title:'新世界'});
