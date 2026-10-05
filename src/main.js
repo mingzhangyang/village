@@ -17,6 +17,7 @@ import { BUILDS, buildingStats, statOf, totalBonus, granaryCapacity, investedCos
 import { FRONTIER, canMine, canDepart, frontierStage, isSettled, isPioneering, isleVisible, activeVillages, islanders, islandAdults, islandMorale, expeditionChecks, expeditionReady, isVolunteer, pickSettlers, launchExpedition, returnHome, retryLeft, hardshipFor } from './simulation/frontier.js';
 import { TECHS, TECH_KEYS, hasTech, techCount, techBonus, era, researchRate, researchBlock, researchStall, techNeeds, startResearch, cancelResearch } from './simulation/tech.js';
 import { ta, isWorker, log, chron, friendCount, living, byId, foodDays, freeSlot, homeTile, makePerson, setRel, bond, seedPopulation, changeRel, remove, assignTarget } from './simulation/population.js';
+import { ONBOARDING_STEP_GUIDE, ONBOARDING_STEP_DONE, onboardingComplete, setOnboardingStep } from './state-contract.js';
 
 const $=id=>document.getElementById(id);
 const Storage=createHejingStorage(window.localStorage);
@@ -423,7 +424,7 @@ async function startChallenge(id){
   const C=CHALLENGES[id];if(!C)return;
   if(!await UiDialog.confirm(`当前自由世界会先保存，挑战使用独立存档，结束后可以原样返回。`,{title:`开始“${C.n}”吗？`,confirmLabel:'开始挑战'}))return;
   saveNow();
-  installState(null,true,C.n);
+  installState(null,true,C.n);setOnboardingStep(S,ONBOARDING_STEP_DONE);
   S.ch={id,start:S.day,hd0:S.hungerDeaths,left0:S.left,hold:0,result:null,txt:'',pct:0};
   if(C.setup)C.setup();
   chron(`挑战开始：${C.n}。${C.d}`,'event');
@@ -437,7 +438,7 @@ function returnToFreeWorld(){
   if(session&&session.state){
     installState(session.state,false,session.name);closeModal();toast(old?`已结束“${old.n}”，回到原来的自由世界`:'已回到自由世界');return true;
   }
-  installState(null,true,'溪谷 1');
+  installState(null,true,'溪谷 1');setOnboardingStep(S,ONBOARDING_STEP_DONE);
   Storage.createSlot('溪谷 1',S,true);saveNow();closeModal();toast('已创建新的自由世界');return true;
 }
 async function keepChallengeWorld(){
@@ -1028,7 +1029,7 @@ $('saveMdl').addEventListener('click',async e=>{
       const fallback=`溪谷 ${Storage.listSlots().length+1}`;
       const name=await UiDialog.prompt('给新世界起个名字。',{title:'新建世界',defaultValue:fallback,confirmLabel:'创建'});if(name===null)return;
       const next=normalizeWorldName(name,fallback);
-      saveNow();installState(null,true,next);
+      saveNow();installState(null,true,next);setOnboardingStep(S,ONBOARDING_STEP_DONE);
       Storage.createSlot(next,S,true);if(info.kind==='challenge')Storage.clearChallenge();
       saveNow();closeSaveManager();toast('新世界已创建');return;
     }
@@ -1275,7 +1276,7 @@ $('reset').onclick=async()=>{
     return;
   }
   if(!await UiDialog.confirm('这个存档槽会被新的世界覆盖，且无法恢复。',{title:`确定重来“${info.name||'当前世界'}”吗？`,confirmLabel:'重新开始'}))return;
-  installState(null,true,info.name||S.worldName);saveNow();toast('当前存档已重新开始');
+  installState(null,true,info.name||S.worldName);setOnboardingStep(S,ONBOARDING_STEP_DONE);saveNow();toast('当前存档已重新开始');
 };
 $('tax').addEventListener('input',e=>{S.tax=+e.target.value/100;$('taxv').textContent=e.target.value+'%';});
 $('policy').addEventListener('change',e=>{S.policy=e.target.value;$('policyDesc').textContent=POLICIES[S.policy];chron(`溪谷改行“${e.target.selectedOptions[0].textContent}”。`,'info');updateUI();});
@@ -1332,25 +1333,30 @@ function installState(raw,fresh,worldName=null){
   closeInfo();colorKey='';terrainGen++;lastChron=-1;frontierKey='';for(const k in _c)delete _c[k];
   computeHouses();syncControls();dirty=true;updateUI();
 }
-function init(fresh){
-  if(fresh){installState(null,true);return true;}
-  const boot=Storage.bootstrap();let created=false;
+function init(){
+  const boot=Storage.bootstrap();
   if(boot.session&&boot.session.state)installState(boot.session.state,false,boot.session.name);
-  else{installState(null,true,'溪谷 1');Storage.createSlot('溪谷 1',S,true);saveNow();created=true;}
+  else{installState(null,true,'溪谷 1');Storage.createSlot('溪谷 1',S,true);saveNow();}
   if(boot.migrated)setTimeout(()=>toast('旧版存档已安全迁移到 Save System v2'),60);
   if(boot.migrationError)setTimeout(()=>toast(boot.migrationError,true),60);
-  return created;
+  return Storage.getActiveInfo().kind==='slot'&&!onboardingComplete(S);
 }
 async function firstVisit(){
   S.paused=true;updateUI();
-  const name=await UiDialog.prompt('这里不是一张等待你征服的地图。三十个人会自己生活、结交、成家、衰老；你可以观察，也可以偶尔轻轻拨动他们的命运。\n\n先给这个世界起个名字。',{title:'欢迎来到溪谷',defaultValue:'溪谷 1',confirmLabel:'继续'});
-  if(name!==null){const next=normalizeWorldName(name,'溪谷 1');S.worldName=next;const info=Storage.getActiveInfo();if(info.id)Storage.renameSlot(info.id,next);saveNow();}
-  await UiDialog.alert('先让时间流动，看看粮食、财富和人与人的关系怎样变化。\n\n想干预时，可以用左侧的自然事件，或在右侧花“恩惠”帮助某个人；重要选择都会留下编年史和一生之书。\n\n没有唯一的胜利方式。观察这个小社会会走向哪里，就是自由模式的核心。',{title:'先观察，再轻轻干预',confirmLabel:'让时间开始流动'});
+  if(S.onboarding.step<ONBOARDING_STEP_GUIDE){
+    const name=await UiDialog.prompt('这里不是一张等待你征服的地图。三十个人会自己生活、结交、成家、衰老；你可以观察，也可以偶尔轻轻拨动他们的命运。\n\n先给这个世界起个名字。',{title:'欢迎来到溪谷',defaultValue:S.worldName||'溪谷 1',confirmLabel:'继续'});
+    if(name!==null){const next=normalizeWorldName(name,'溪谷 1');S.worldName=next;const info=Storage.getActiveInfo();if(info.id)Storage.renameSlot(info.id,next);}
+    setOnboardingStep(S,ONBOARDING_STEP_GUIDE);saveNow();
+  }
+  if(S.onboarding.step<ONBOARDING_STEP_DONE){
+    await UiDialog.alert('先让时间流动，看看粮食、财富和人与人的关系怎样变化。\n\n想干预时，可以用左侧的自然事件，或在右侧花“恩惠”帮助某个人；重要选择都会留下编年史和一生之书。\n\n没有唯一的胜利方式。观察这个小社会会走向哪里，就是自由模式的核心。',{title:'先观察，再轻轻干预',confirmLabel:'让时间开始流动'});
+    setOnboardingStep(S,ONBOARDING_STEP_DONE);saveNow();
+  }
   S.paused=false;dirty=true;updateUI();saveNow();
 }
 buildStats();buildSeeds();readTheme();
-const createdFresh=init(false);
-if(createdFresh)firstVisit();
+const needsOnboarding=init();
+if(needsOnboarding)firstVisit();
 if(window.ResizeObserver)new ResizeObserver(resize).observe($('mapwrap'));
 window.addEventListener('resize',resize);
 window.addEventListener('pagehide',saveNow);

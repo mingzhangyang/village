@@ -3,6 +3,7 @@ import { knownPersonSurname, migratedFamilyName } from './names.js';
 import { normalizeTech } from './tech.js';
 import { normalizeFrontier } from './frontier.js';
 import { clampResidentHappiness, normalizeWorldName } from './invariants.js';
+import { MAX_CHRON_ENTRIES, MAX_PERSON_HISTORY_ENTRIES, freshOnboarding, normalizeOnboarding } from '../state-contract.js';
 
 let activeState = null;
 let onDirty = () => {};
@@ -300,7 +301,7 @@ function repairLegacyFamilyNames(state) {
 
 export function newState(seed = createWorldSeed()){
   const worldSeed = normalizeSeed(seed);
-  return {v:1,familyNameVersion:FAMILY_NAME_VERSION,seed:worldSeed,rngState:worldSeed,worldName:'溪谷群岛',day:0,food:388,treasury:60,people:[],dead:[],nextId:1,tax:0.15,policy:'need',
+  return {v:1,familyNameVersion:FAMILY_NAME_VERSION,seed:worldSeed,rngState:worldSeed,worldName:'溪谷群岛',onboarding:freshOnboarding(),day:0,food:388,treasury:60,people:[],dead:[],nextId:1,tax:0.15,policy:'need',
     drought:0,plague:0,plagueId:0,festival:0,caravan:0,mine:false,canal:false,cd:{},
     cohesion:57,publicPerCap:0,gini:0.25,births:0,deaths:0,left:0,trades:0,foodProd:0,foodCons:0,price:1,
     built:[],rot:0,watch:[],alerts:[],alertsOn:true,ch:null,hungerDeaths:0,lastHunger:'',lastLeft:'',favor:3,pending:null,nextDilemma:25,lastDil:'',dilemmasOn:true,school:false,mineClosed:0,tech:{},research:null,frontier:null,
@@ -318,7 +319,13 @@ export function normalizeState(raw){
   state.hist=Object.assign({},base.hist,o.hist||{});
   for(const k of ['pop','food','wealth','happy','coh'])if(!Array.isArray(state.hist[k]))state.hist[k]=[];
   for(const k of ['people','dead','built','watch','alerts','chron'])if(!Array.isArray(state[k]))state[k]=[];
+  state.chron=state.chron.slice(-MAX_CHRON_ENTRIES);
+  for(const person of [...state.people,...state.dead]){
+    if(!person||typeof person!=='object')continue;
+    person.hist=Array.isArray(person.hist)?person.hist.slice(-MAX_PERSON_HISTORY_ENTRIES):[];
+  }
   state.worldName=normalizeWorldName(state.worldName,base.worldName);
+  state.onboarding=normalizeOnboarding(o.onboarding,{legacyComplete:o.onboarding==null});
   clampResidentHappiness(state);
   normalizeTech(state);
   normalizeFrontier(state);

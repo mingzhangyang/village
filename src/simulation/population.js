@@ -5,6 +5,7 @@ import { random, rand, randi, pick, clamp } from './random.js';
 import { getState, markStateDirty } from './state.js';
 import { canDepart, canMine } from './frontier.js';
 import { defaultSurnameForNewPerson, knownPersonSurname, migratedFamilyName, surnameFromName } from './names.js';
+import { MAX_CHRON_ENTRIES, MAX_PERSON_HISTORY_ENTRIES } from '../state-contract.js';
 
 export const ta=p=>p.gender==='女'?'她':'他';
 export const isWorker=p=>p.job!=='child'&&p.job!=='elder';
@@ -14,9 +15,9 @@ export const need=p=>p.job==='child'?0.07:0.11;
 
 
 export function log(p,t){
-  const S = getState();p.hist.push({d:S.day,t});if(p.hist.length>60)p.hist.splice(0,p.hist.length-60);}
+  const S = getState();p.hist.push({d:S.day,t});if(p.hist.length>MAX_PERSON_HISTORY_ENTRIES)p.hist.splice(0,p.hist.length-MAX_PERSON_HISTORY_ENTRIES);}
 export function chron(t,k){
-  const S = getState();S.chron.push({d:S.day,t,k:k||'info'});if(S.chron.length>120)S.chron.shift();S.chronVer++;markStateDirty();}
+  const S = getState();S.chron.push({d:S.day,t,k:k||'info'});if(S.chron.length>MAX_CHRON_ENTRIES)S.chron.splice(0,S.chron.length-MAX_CHRON_ENTRIES);S.chronVer++;markStateDirty();}
 export function friendCount(p){let n=0;for(const k in p.rel)if(p.rel[k]>=40)n++;return n;}
 export function living(id){
   const S = getState();for(const p of S.people)if(p.id===id)return p;return null;}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { monotonicDay, normalizeWorldName } from '../src/simulation/invariants.js';
 import { newState, normalizeState } from '../src/simulation/state.js';
+import { MAX_CHRON_ENTRIES, MAX_PERSON_HISTORY_ENTRIES, ONBOARDING_STEP_GUIDE, ONBOARDING_STEP_DONE, onboardingComplete, setOnboardingStep } from '../src/state-contract.js';
 
 describe('simulation state invariants', () => {
   it('clamps resident happiness when loading saves', () => {
@@ -33,5 +34,30 @@ describe('simulation state invariants', () => {
     expect(normalizeWorldName('   ','溪谷 2')).toBe('溪谷 2');
     expect(normalizeWorldName('  新世界  ','溪谷 2')).toBe('新世界');
     expect(normalizeWorldName('  山  海  ','溪谷 2')).toBe('山 海');
+  });
+
+  it('reapplies retained-history limits when loading imported state', () => {
+    const state=newState(19);
+    state.chron=Array.from({length:MAX_CHRON_ENTRIES+25},(_,d)=>({d,t:`事件 ${d}`,k:'info'}));
+    state.people=[{id:1,name:'林川',age:20,happiness:50,hist:Array.from({length:MAX_PERSON_HISTORY_ENTRIES+15},(_,d)=>({d,t:`经历 ${d}`}))}];
+
+    const normalized=normalizeState(state);
+
+    expect(normalized.chron).toHaveLength(MAX_CHRON_ENTRIES);
+    expect(normalized.chron[0].d).toBe(25);
+    expect(normalized.people[0].hist).toHaveLength(MAX_PERSON_HISTORY_ENTRIES);
+    expect(normalized.people[0].hist[0].d).toBe(15);
+  });
+
+  it('makes onboarding resumable while treating legacy saves as complete', () => {
+    const fresh=newState(23);
+    expect(onboardingComplete(fresh)).toBe(false);
+    setOnboardingStep(fresh,ONBOARDING_STEP_GUIDE);
+    expect(normalizeState(fresh).onboarding.step).toBe(ONBOARDING_STEP_GUIDE);
+
+    const legacy=newState(24);delete legacy.onboarding;
+    const normalizedLegacy=normalizeState(legacy);
+    expect(normalizedLegacy.onboarding.step).toBe(ONBOARDING_STEP_DONE);
+    expect(onboardingComplete(normalizedLegacy)).toBe(true);
   });
 });

@@ -1,91 +1,74 @@
-let host;
-let activeResolve=null;
-let returnFocus=null;
+export function createUiDialog(doc=globalThis.document){
+  let host=null,dlg=null,kickEl=null,titleEl=null,textEl=null,inputEl=null,cancelEl=null,okEl=null;
+  let activeResolve=null,returnFocus=null;
 
-function ensureHost(){
-  if(host)return host;
-  host=document.createElement('div');
-  host.id='askMdl';
-  host.className='dlg-back';
-  host.hidden=true;
-  host.innerHTML=`
-    <div class="dlg card ask-dlg" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="askTitle">
-      <div class="kick" id="askKick">请确认</div>
-      <h2 id="askTitle"></h2>
-      <p id="askText"></p>
-      <input class="ask-input" id="askInput" type="text" maxlength="40" aria-labelledby="askTitle" aria-describedby="askText" hidden>
-      <div class="ask-actions">
-        <button class="btn" id="askCancel">取消</button>
-        <button class="btn primary" id="askOk">确定</button>
-      </div>
-    </div>`;
-  document.body.appendChild(host);
-  host.addEventListener('click',event=>{
-    if(event.target===host&&!document.getElementById('askCancel').hidden)finish(null);
-  });
-  document.getElementById('askCancel').addEventListener('click',()=>finish(null));
-  document.getElementById('askOk').addEventListener('click',()=>finish(readValue()));
-  document.addEventListener('keydown',event=>{
-    if(!host||host.hidden||event.isComposing)return;
-    if(event.key==='Escape'&&!document.getElementById('askCancel').hidden){
-      event.preventDefault();finish(null);return;
-    }
-    if(event.key==='Enter'&&!event.shiftKey){
-      event.preventDefault();
-      const cancel=document.getElementById('askCancel');
-      finish(!cancel.hidden&&cancel.contains(event.target)?null:readValue());return;
-    }
-    if(event.key!=='Tab')return;
-    const dlg=host.querySelector('.dlg');
-    const focusable=[...dlg.querySelectorAll('button:not([hidden]),input:not([hidden])')]
-      .filter(el=>!el.disabled&&el.getClientRects().length);
-    if(!focusable.length){event.preventDefault();dlg.focus();return;}
-    const first=focusable[0],last=focusable[focusable.length-1],active=document.activeElement;
-    if(event.shiftKey&&(active===first||active===dlg)){event.preventDefault();last.focus();}
-    else if(!event.shiftKey&&active===last){event.preventDefault();first.focus();}
-  });
-  return host;
-}
+  const visible=el=>!!el&&!el.hidden&&typeof el.focus==='function'
+    &&(!el.getClientRects||el.getClientRects().length>0);
 
-function readValue(){
-  const input=document.getElementById('askInput');
-  return input.hidden?true:input.value.trim();
-}
+  function finish(value){
+    if(!host||host.hidden)return;
+    host.hidden=true;
+    const resolve=activeResolve;activeResolve=null;
+    const focus=returnFocus;returnFocus=null;
+    if(visible(focus))focus.focus({preventScroll:true});
+    if(resolve)resolve(value);
+  }
 
-function finish(value){
-  if(!host||host.hidden)return;
-  host.hidden=true;
-  const resolve=activeResolve;
-  activeResolve=null;
-  const focus=returnFocus;
-  returnFocus=null;
-  if(focus&&typeof focus.focus==='function')focus.focus({preventScroll:true});
-  if(resolve)resolve(value);
-}
+  function ensureHost(){
+    if(host)return host;
+    host=doc.createElement('div');host.id='askMdl';host.className='dlg-back';host.hidden=true;
 
-function open({kick='请确认',title='',text='',input=false,defaultValue='',confirmLabel='确定',cancelLabel='取消'}={}){
-  ensureHost();
-  if(activeResolve)finish(null);
-  returnFocus=document.activeElement;
-  document.getElementById('askKick').textContent=kick;
-  document.getElementById('askTitle').textContent=title;
-  document.getElementById('askText').textContent=text;
-  const field=document.getElementById('askInput');
-  field.hidden=!input;
-  field.value=input?defaultValue:'';
-  const cancel=document.getElementById('askCancel');
-  cancel.hidden=cancelLabel==null;
-  if(cancelLabel!=null)cancel.textContent=cancelLabel;
-  document.getElementById('askOk').textContent=confirmLabel;
-  host.hidden=false;
-  const dlg=host.querySelector('.dlg');
-  (input?field:document.getElementById('askOk')).focus({preventScroll:true});
-  if(input)field.select();
-  else dlg.scrollTop=0;
-  return new Promise(resolve=>{activeResolve=resolve;});
-}
+    dlg=doc.createElement('div');dlg.className='dlg card ask-dlg';dlg.tabIndex=-1;
+    dlg.setAttribute('role','dialog');dlg.setAttribute('aria-modal','true');dlg.setAttribute('aria-labelledby','askTitle');
 
-export function createUiDialog(){
+    kickEl=doc.createElement('div');kickEl.className='kick';kickEl.id='askKick';kickEl.textContent='请确认';
+    titleEl=doc.createElement('h2');titleEl.id='askTitle';
+    textEl=doc.createElement('p');textEl.id='askText';
+
+    inputEl=doc.createElement('input');inputEl.className='ask-input';inputEl.id='askInput';inputEl.type='text';inputEl.maxLength=40;inputEl.hidden=true;
+    inputEl.setAttribute('aria-labelledby','askTitle');inputEl.setAttribute('aria-describedby','askText');
+
+    const actions=doc.createElement('div');actions.className='ask-actions';
+    cancelEl=doc.createElement('button');cancelEl.className='btn';cancelEl.id='askCancel';cancelEl.textContent='取消';
+    okEl=doc.createElement('button');okEl.className='btn primary';okEl.id='askOk';okEl.textContent='确定';
+    actions.appendChild(cancelEl);actions.appendChild(okEl);
+
+    dlg.appendChild(kickEl);dlg.appendChild(titleEl);dlg.appendChild(textEl);dlg.appendChild(inputEl);dlg.appendChild(actions);
+    host.appendChild(dlg);doc.body.appendChild(host);
+
+    host.addEventListener('click',event=>{if(event.target===host&&!cancelEl.hidden)finish(null);});
+    cancelEl.addEventListener('click',()=>finish(null));
+    okEl.addEventListener('click',()=>finish(inputEl.hidden?true:inputEl.value.trim()));
+    doc.addEventListener('keydown',event=>{
+      if(!host||host.hidden||event.isComposing)return;
+      if(event.key==='Escape'&&!cancelEl.hidden){event.preventDefault();finish(null);return;}
+      if(event.key==='Enter'&&!event.shiftKey){
+        event.preventDefault();finish(!cancelEl.hidden&&cancelEl.contains(event.target)?null:(inputEl.hidden?true:inputEl.value.trim()));return;
+      }
+      if(event.key!=='Tab')return;
+      const focusable=[cancelEl,inputEl,okEl].filter(el=>!el.hidden&&!el.disabled&&visible(el));
+      if(!focusable.length){event.preventDefault();dlg.focus();return;}
+      const first=focusable[0],last=focusable[focusable.length-1],active=doc.activeElement;
+      if(event.shiftKey&&(active===first||active===dlg)){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&active===last){event.preventDefault();first.focus();}
+    });
+    return host;
+  }
+
+  function open({kick='请确认',title='',text='',input=false,defaultValue='',confirmLabel='确定',cancelLabel='取消'}={}){
+    ensureHost();
+    if(activeResolve)finish(null);
+    returnFocus=doc.activeElement;
+    kickEl.textContent=kick;titleEl.textContent=title;textEl.textContent=text;
+    inputEl.hidden=!input;inputEl.value=input?defaultValue:'';
+    cancelEl.hidden=cancelLabel==null;if(cancelLabel!=null)cancelEl.textContent=cancelLabel;
+    okEl.textContent=confirmLabel;
+    host.hidden=false;
+    (input?inputEl:okEl).focus({preventScroll:true});
+    if(input&&typeof inputEl.select==='function')inputEl.select();else dlg.scrollTop=0;
+    return new Promise(resolve=>{activeResolve=resolve;});
+  }
+
   return {
     isOpen:()=>!!host&&!host.hidden,
     async confirm(text,{title='确定要继续吗？',kick='请确认',confirmLabel='确定',cancelLabel='取消'}={}){
