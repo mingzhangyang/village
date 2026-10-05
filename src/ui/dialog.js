@@ -47,10 +47,12 @@ export function createUiDialog(doc=globalThis.document){
       }
       if(event.key!=='Tab')return;
       const focusable=[inputEl,cancelEl,okEl].filter(el=>!el.hidden&&!el.disabled&&visible(el));
-      if(!focusable.length){event.preventDefault();dlg.focus();return;}
-      const first=focusable[0],last=focusable[focusable.length-1],active=doc.activeElement;
-      if(event.shiftKey&&(active===first||active===dlg)){event.preventDefault();last.focus();}
-      else if(!event.shiftKey&&active===last){event.preventDefault();first.focus();}
+      event.preventDefault();
+      if(!focusable.length){dlg.focus();return;}
+      const active=doc.activeElement,index=focusable.indexOf(active);
+      if(index<0){(event.shiftKey?focusable[focusable.length-1]:focusable[0]).focus();return;}
+      const next=(index+(event.shiftKey?-1:1)+focusable.length)%focusable.length;
+      focusable[next].focus();
     });
     return host;
   }
