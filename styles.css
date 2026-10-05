@@ -136,7 +136,7 @@ select{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8p
 .dlg p{margin:0 0 6px;line-height:1.75}
 .ask-dlg{max-width:520px}
 .ask-dlg p{white-space:pre-line}
-.ask-input{width:100%;box-sizing:border-box;margin:10px 0 4px;border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:8px 10px}
+.ask-input{width:100%;box-sizing:border-box;margin:10px 0 4px;border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:8px 10px;font-size:16px}
 .ask-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 .dlg-later{width:100%;margin-top:8px}
 .pending-btn{border-color:var(--warn);color:var(--warn);background:var(--warn-soft)}
